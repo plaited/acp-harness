@@ -9,7 +9,7 @@
 #   CI:     Uses ANTHROPIC_API_KEY from GitHub Actions secrets
 
 services:
-  docker-integration:
+  acp-test:
     build:
       context: .
       dockerfile: Dockerfile.test
