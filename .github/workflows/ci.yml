@@ -45,7 +45,6 @@ jobs:
   # Only runs when src/ files change to reduce API costs
   test-acp-integration:
     needs: changes
-    if: ${{ needs.changes.outputs.acp == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: oven/bun:1.2.9
