@@ -57,14 +57,14 @@ This package includes a comprehensive **eval-harness plugin** designed for AI-as
 
 **Claude Code:**
 
-```
-/plugin marketplace add plaited/acp-harness
+```bash
+claude plugins add github:plaited/marketplace
 ```
 
 **Other agents (Gemini CLI, GitHub Copilot, Cursor, OpenCode, Amp, Goose, Factory):**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/plaited/acp-harness/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/plaited/marketplace/main/install.sh | bash
 ```
 
 Once installed, the plugin auto-activates when working on evaluation tasks. Ask your AI agent to help you:
