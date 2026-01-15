@@ -113,6 +113,11 @@ jobs:
           IS_PRERELEASE: ${{ steps.set_version.outputs.is_prerelease }}
         run: |
           npm version --no-git-tag-version "$VERSION"
+
+          # Update marketplace.json plugin version
+          jq --arg v "$VERSION" '.plugins[0].version = $v' .claude-plugin/marketplace.json > .claude-plugin/marketplace.json.tmp
+          mv .claude-plugin/marketplace.json.tmp .claude-plugin/marketplace.json
+
           git add -A
           git commit -m "ci: publish [skip ci]"
           git push
