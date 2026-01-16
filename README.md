@@ -57,6 +57,8 @@ This package includes a comprehensive **eval-harness plugin** designed for AI-as
 
 Install via the Plaited marketplace:
 
+**Claude Code:**
+
 ```bash
 /plugin marketplace add plaited/marketplace
 ```
