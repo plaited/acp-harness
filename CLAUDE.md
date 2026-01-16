@@ -62,15 +62,15 @@ For complete conventions, see `.claude/rules/code-review.md`
 
 ### Plugin Development
 
-This project is a Claude Code plugin marketplace package. Structure:
-- `.claude-plugin/marketplace.json` - Plugin manifest for marketplace distribution
+This project is a Claude Code plugin distributed via the plaited/marketplace aggregator. Structure:
+- `.claude/.claude-plugin/plugin.json` - Plugin manifest
 - `.claude/` - Plugin source (skills, rules, settings)
 
 When working on plugins:
 - Clear cache after changes: `rm -rf ~/.claude/plugins-cache`
 - Restart Claude Code to see updates
 - Skills are auto-invoked (won't show in `/plugins` UI)
-- Test installation locally: `/plugin marketplace add plaited/acp-harness`
+- Test installation locally: `claude plugins add github:plaited/marketplace`
 
 ### Documentation
 

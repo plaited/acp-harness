@@ -114,9 +114,9 @@ jobs:
         run: |
           npm version --no-git-tag-version "$VERSION"
 
-          # Update marketplace.json plugin version
-          jq --arg v "$VERSION" '.plugins[0].version = $v' .claude-plugin/marketplace.json > .claude-plugin/marketplace.json.tmp
-          mv .claude-plugin/marketplace.json.tmp .claude-plugin/marketplace.json
+          # Update plugin.json version
+          jq --arg v "$VERSION" '.version = $v' .claude/.claude-plugin/plugin.json > .claude/.claude-plugin/plugin.json.tmp
+          mv .claude/.claude-plugin/plugin.json.tmp .claude/.claude-plugin/plugin.json
 
           git add -A
           git commit -m "ci: publish [skip ci]"

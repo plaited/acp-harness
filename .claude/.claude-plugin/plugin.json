@@ -1,0 +1,22 @@
+{
+  "name": "eval-harness",
+  "version": "0.1.0-next.1",
+  "description": "Agent Client Protocol client and evaluation harness for TypeScript/Bun projects. Includes: createACPClient for programmatic agent access, run-harness.ts for trajectory capture, and LLM-as-judge evaluation templates. Requires Bun runtime.",
+  "author": {
+    "name": "Plaited Labs"
+  },
+  "license": "ISC",
+  "category": "development",
+  "skills": [
+    {
+      "name": "acp-harness",
+      "description": "Unified Agent Client Protocol client and evaluation harness. Connect to ACP-compatible agents programmatically, capture full trajectories (tools, thoughts, plans), and pipe to downstream analysis tools."
+    }
+  ],
+  "mcpServers": {
+    "agent-client-protocol": {
+      "type": "http",
+      "url": "https://agentclientprotocol.com/mcp"
+    }
+  }
+}
