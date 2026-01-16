@@ -6,13 +6,6 @@
     "name": "Plaited Labs"
   },
   "license": "ISC",
-  "category": "development",
-  "skills": [
-    {
-      "name": "acp-harness",
-      "description": "Unified Agent Client Protocol client and evaluation harness. Connect to ACP-compatible agents programmatically, capture full trajectories (tools, thoughts, plans), and pipe to downstream analysis tools."
-    }
-  ],
   "mcpServers": {
     "agent-client-protocol": {
       "type": "http",
