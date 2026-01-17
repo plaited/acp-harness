@@ -10,7 +10,7 @@
  * newline-delimited JSON messages with Zod runtime validation.
  */
 
-import { JSON_RPC_ERRORS } from './acp.constants.ts'
+import { JSON_RPC_ERRORS } from './constants.ts'
 import type {
   JsonRpcError,
   JsonRpcErrorResponse,
@@ -19,8 +19,8 @@ import type {
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcSuccessResponse,
-} from './acp.schemas.ts'
-import { JsonRpcMessageSchema } from './acp.schemas.ts'
+} from './schemas.ts'
+import { JsonRpcMessageSchema } from './schemas.ts'
 
 // ============================================================================
 // Types
@@ -71,7 +71,7 @@ type PipedSubprocess = {
 }
 
 /** Custom error for ACP transport failures */
-class ACPTransportError extends Error {
+export class ACPTransportError extends Error {
   constructor(
     message: string,
     public readonly code?: number,

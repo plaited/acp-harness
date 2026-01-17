@@ -1,21 +1,70 @@
 # Output Formats
 
-The harness supports two output formats optimized for different use cases.
+The harness uses a "capture once, derive many views" approach. The `capture` command produces full trajectory JSONL, and derived views are created with separate commands.
 
-## Format Selection
+## Capture Output (Full Trajectory)
+
+The `capture` command always outputs full trajectory JSONL:
 
 ```bash
-bunx @plaited/acp-harness prompts.jsonl --format <format> -o <output>
+acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
 ```
 
-| Format | Files Created | Use Case |
-|--------|---------------|----------|
-| `summary` | Single JSONL | Quick metrics, dashboards, jq analysis |
-| `judge` | `.md` + `.full.jsonl` | Downstream LLM-as-judge scoring |
+### Schema
 
-## Summary Format (Default)
+```typescript
+type CaptureResult = {
+  id: string                    // Prompt identifier
+  input: string                 // Original prompt text
+  output: string                // Final agent response
+  expected?: string             // Expected output (if provided in prompt)
+  trajectory: TrajectoryStep[]  // Full execution trajectory
+  metadata: Record<string, unknown>  // Prompt metadata
+  timing: {
+    start: number               // Unix timestamp (ms)
+    end: number                 // Unix timestamp (ms)
+    firstResponse?: number      // Time to first response (ms)
+  }
+  toolErrors: boolean           // Whether any tool calls failed
+  errors?: string[]             // Error messages (if any)
+  score?: GraderResult          // Grader score (if grader was provided)
+}
 
-Minimal JSONL for quick metrics and analysis.
+type TrajectoryStep =
+  | { type: 'thought'; content: string; timestamp: number; stepId?: string }
+  | { type: 'message'; content: string; timestamp: number; stepId?: string }
+  | {
+      type: 'tool_call'
+      name: string              // Tool title from ACP SDK
+      status: string            // pending, in_progress, completed, failed
+      input?: unknown           // Raw input parameters
+      output?: unknown          // Raw output
+      duration?: number         // Execution time (ms)
+      timestamp: number
+      stepId?: string
+    }
+  | { type: 'plan'; entries: unknown[]; timestamp: number; stepId?: string }
+
+type GraderResult = {
+  pass: boolean
+  score: number                 // 0.0 to 1.0
+  reasoning?: string
+}
+```
+
+### Example Output
+
+```jsonl
+{"id":"test-001","input":"Create a primary button","output":"I created the button in src/button.tsx","trajectory":[{"type":"thought","content":"I'll create a styled button template","timestamp":100,"stepId":"test-001-step-1"},{"type":"tool_call","name":"Write","status":"completed","input":{"file_path":"src/button.tsx","content":"..."},"output":"File written","duration":234,"timestamp":150,"stepId":"test-001-step-2"},{"type":"message","content":"I created the button","timestamp":500,"stepId":"test-001-step-3"}],"metadata":{"category":"ui"},"timing":{"start":1704067200000,"end":1704067201234,"firstResponse":100},"toolErrors":false}
+```
+
+## Summary Format
+
+The `summarize` command derives compact JSONL from full trajectory:
+
+```bash
+acp-harness summarize results.jsonl -o summary.jsonl
+```
 
 ### Schema
 
@@ -25,7 +74,6 @@ type SummaryResult = {
   input: string                 // Original prompt text
   output: string                // Final agent response
   toolCalls: string[]           // List of tool names used
-  status: 'passed' | 'failed' | 'error' | 'timeout'
   duration: number              // Total execution time (ms)
 }
 ```
@@ -33,43 +81,35 @@ type SummaryResult = {
 ### Example Output
 
 ```jsonl
-{"id":"test-001","input":"Create a primary button","output":"I created the button in src/button.tsx","toolCalls":["Write"],"status":"passed","duration":1234}
-{"id":"test-002","input":"Fix the TypeScript error","output":"I fixed the type error...","toolCalls":["Read","Edit"],"status":"passed","duration":2567}
+{"id":"test-001","input":"Create a primary button","output":"I created the button in src/button.tsx","toolCalls":["Write"],"duration":1234}
+{"id":"test-002","input":"Fix the TypeScript error","output":"I fixed the type error...","toolCalls":["Read","Edit"],"duration":2567}
 ```
 
 ### Analysis with jq
 
 ```bash
 # Calculate average duration
-cat results.jsonl | jq -s 'map(.duration) | add / length'
+cat summary.jsonl | jq -s 'map(.duration) | add / length'
 
 # Count tool usage
-cat results.jsonl | jq -s 'map(.toolCalls) | flatten | group_by(.) | map({tool: .[0], count: length})'
+cat summary.jsonl | jq -s 'map(.toolCalls) | flatten | group_by(.) | map({tool: .[0], count: length})'
 
-# Filter by status
-cat results.jsonl | jq 'select(.status == "failed")'
-
-# Pass rate
-cat results.jsonl | jq -s 'map(select(.status == "passed")) | length as $p | length as $t | "\($p)/\($t) passed"'
+# Filter by output content
+cat summary.jsonl | jq 'select(.output | contains("error"))'
 ```
 
-## Judge Format (Two-Tier)
+## Markdown Format
 
-Creates two files for downstream LLM-as-judge scoring with step-level correlation.
+The `summarize` command can also produce markdown for LLM-as-judge workflows:
 
 ```bash
-bunx @plaited/acp-harness prompts.jsonl --format judge -o results
-# Creates: results.md + results.full.jsonl
+acp-harness summarize results.jsonl --markdown -o results.md
 ```
 
-### Markdown File (`<output>.md`)
-
-Human-readable summary with step IDs and code previews.
-
-**Structure:**
+### Structure
 
 ```markdown
-## Capture Record: <id>
+## Evaluation Record: <id>
 
 **Input:** <original prompt>
 
@@ -89,7 +129,7 @@ Human-readable summary with step IDs and code previews.
 
 **Output:** <truncated final output>
 **Metadata:** category=ui, agent=claude-code-acp, ...
-**Status:** passed|failed|error|timeout
+**Tool Errors:** false
 **Duration:** <ms>ms
 
 ---
@@ -102,99 +142,94 @@ Human-readable summary with step IDs and code previews.
 - Output: First 200 characters
 - Code preview: Head (8 lines) + tail (4 lines) for files > 12 lines
 
-### Full JSONL File (`<output>.full.jsonl`)
+## Trials Output
 
-Complete trajectory with step IDs for correlation.
-
-**Schema:**
-
-```typescript
-type FullResult = {
-  id: string
-  input: string
-  output: string
-  expected?: string
-  trajectory: IndexedStep[]     // Steps with stepId
-  metadata: Record<string, unknown>
-  timing: {
-    start: number               // Unix timestamp (ms)
-    end: number                 // Unix timestamp (ms)
-    firstResponse?: number      // Time to first response (ms)
-  }
-  status: 'passed' | 'failed' | 'error' | 'timeout'
-  errors?: string[]
-}
-
-type IndexedStep = TrajectoryStep & { stepId: string }
-
-type TrajectoryStep =
-  | { type: 'thought'; content: string; timestamp: number }
-  | { type: 'message'; content: string; timestamp: number }
-  | {
-      type: 'tool_call'
-      name: string              // Tool title from ACP SDK
-      status: string            // pending, in_progress, completed, failed
-      input?: unknown           // Raw input parameters
-      output?: unknown          // Raw output
-      duration?: number         // Execution time (ms)
-      timestamp: number
-    }
-  | { type: 'plan'; entries: PlanEntry[]; timestamp: number }
-```
-
-**Example:**
-
-```jsonl
-{"id":"test-001","input":"Create a primary button","output":"I created the button...","trajectory":[{"type":"thought","content":"I'll create a styled button template with createStyles","timestamp":100,"stepId":"test-001-step-1"},{"type":"tool_call","name":"Write","status":"completed","input":{"file_path":"src/button.tsx","content":"import { createStyles }..."},"output":"File written successfully","duration":234,"timestamp":150,"stepId":"test-001-step-2"},{"type":"message","content":"I created the button template","timestamp":500,"stepId":"test-001-step-3"}],"metadata":{"category":"ui","agent":"claude"},"timing":{"start":1704067200000,"end":1704067201234,"firstResponse":100},"status":"passed"}
-```
-
-## Two-Tier Scoring Workflow
-
-### Direct Scoring (Large Context)
-
-For judges with large context windows (Gemini 1M+, Claude 200k):
+The `trials` command produces per-prompt trial results:
 
 ```bash
-# Feed full JSONL directly
-cat results.full.jsonl | your-gemini-judge.ts
+acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
 ```
 
-### Step-Level Retrieval (Small Context)
-
-For smaller models or step-specific analysis:
+### Schema
 
 ```typescript
-// Load both files
-const markdown = await Bun.file('results.md').text()
-const fullLines = (await Bun.file('results.full.jsonl').text()).trim().split('\n')
+type TrialResult = {
+  id: string                    // Prompt identifier
+  input: string                 // Original prompt text
+  expected?: string             // Expected output (if provided)
+  k: number                     // Number of trials
+  passRate?: number             // passes / k (with grader only)
+  passAtK?: number              // 1 - (1-passRate)^k (with grader only)
+  passExpK?: number             // passRate^k (with grader only)
+  trials: TrialEntry[]          // Individual trial results
+}
 
-// Parse full results indexed by step ID
+type TrialEntry = {
+  trialNum: number              // Trial number (1-indexed)
+  output: string                // Agent output for this trial
+  trajectory: TrajectoryStep[]  // Full trajectory for this trial
+  duration: number              // Duration in milliseconds
+  pass?: boolean                // Pass/fail (if grader provided)
+  score?: number                // Numeric score (if grader provided)
+  reasoning?: string            // Grader reasoning (if grader provided)
+}
+```
+
+### Example (Without Grader)
+
+```jsonl
+{"id":"search-001","input":"Find the CEO of Anthropic","k":5,"trials":[{"trialNum":1,"output":"Dario Amodei...","trajectory":[...],"duration":1234},{"trialNum":2,"output":"The CEO is Dario...","trajectory":[...],"duration":1100},...]}
+```
+
+### Example (With Grader)
+
+```jsonl
+{"id":"search-001","input":"Find the CEO of Anthropic","k":5,"passRate":0.8,"passAtK":0.9997,"passExpK":0.3277,"trials":[{"trialNum":1,"output":"Dario Amodei...","pass":true,"score":1.0,"duration":1234},{"trialNum":2,"output":"I don't know...","pass":false,"score":0.0,"reasoning":"Missing expected answer","duration":1100},...]}
+```
+
+## Step-Level Retrieval Pattern
+
+For step-specific analysis, use the step IDs in the trajectory:
+
+```typescript
+// Load results
+const results = (await Bun.file('results.jsonl').text())
+  .trim()
+  .split('\n')
+  .map(line => JSON.parse(line))
+
+// Build step index
 const stepIndex = new Map<string, unknown>()
-for (const line of fullLines) {
-  const result = JSON.parse(line)
+for (const result of results) {
   for (const step of result.trajectory) {
     stepIndex.set(step.stepId, step)
   }
 }
 
-// Judge requests full content for specific step
+// Retrieve specific step by ID
 const stepId = 'test-001-step-2'  // From markdown [->stepId]
 const fullStep = stepIndex.get(stepId)
 console.log(fullStep.input)  // Complete tool input
 ```
 
-## Status Values
+## toolErrors Field
 
-| Status | Meaning |
-|--------|---------|
-| `passed` | Completed without tool errors |
-| `failed` | Completed but one or more tool calls failed |
-| `error` | Unhandled exception during execution |
-| `timeout` | Request exceeded timeout limit |
+The `toolErrors` field indicates whether any tool calls failed during execution:
+
+| `toolErrors` | Meaning |
+|--------------|---------|
+| `false` | All tool calls completed successfully |
+| `true` | One or more tool calls had `status: 'failed'` |
+
+**Note:** `toolErrors` only indicates tool-level failures. For semantic pass/fail (did the agent accomplish the task?), use a grader:
+
+```bash
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
+```
 
 ## Input Format
 
-Both formats accept the same JSONL input:
+All commands accept the same JSONL input:
 
 ```jsonl
 {"id":"test-001","input":"Create a primary button","expected":"should contain <button>","metadata":{"category":"ui"}}
@@ -204,17 +239,18 @@ Both formats accept the same JSONL input:
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier |
 | `input` | Yes | Prompt text for the agent |
-| `expected` | No | Expected output (for downstream scoring) |
+| `expected` | No | Expected output (for grader) |
+| `reference` | No | Reference solution (for validate-refs) |
 | `metadata` | No | Tags, category, difficulty for filtering |
 | `timeout` | No | Override default timeout for this prompt |
 
 ## Streaming Behavior
 
-Both formats stream output line-by-line as results complete:
+All commands stream output line-by-line as results complete:
 
 ```bash
 # Watch results in real-time
-bunx @plaited/acp-harness prompts.jsonl --progress -o results.jsonl &
+acp-harness capture prompts.jsonl bunx claude-code-acp --progress -o results.jsonl &
 tail -f results.jsonl
 ```
 

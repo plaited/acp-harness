@@ -4,6 +4,10 @@
       "type": "http",
       "url": "https://agentskills.io/mcp"
     },
+    "bun-docs" : {
+      "type": "http",
+      "url": "https://bun.com/docs/mcp"
+    },
     "agent-client-protocol": {
       "type": "http",
       "url": "https://agentclientprotocol.com/mcp"

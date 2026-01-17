@@ -26,10 +26,11 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('Usage: acp-harness')
-    expect(stdout).toContain('command [args]')
-    expect(stdout).toContain('--output')
-    expect(stdout).toContain('--format')
+    expect(stdout).toContain('acp-harness')
+    expect(stdout).toContain('Commands:')
+    expect(stdout).toContain('capture')
+    expect(stdout).toContain('trials')
+    expect(stdout).toContain('summarize')
   })
 
   test('shows help with -h flag', async () => {
@@ -41,7 +42,7 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('Usage: acp-harness')
+    expect(stdout).toContain('acp-harness')
   })
 
   test('shows help when no arguments provided', async () => {
@@ -52,8 +53,8 @@ describe('CLI invocation', () => {
     const stdout = await new Response(proc.stdout).text()
     const exitCode = await proc.exited
 
-    expect(exitCode).toBe(1) // Exits with error when no args
-    expect(stdout).toContain('Usage: acp-harness')
+    expect(exitCode).toBe(0) // Exits cleanly when showing help
+    expect(stdout).toContain('acp-harness')
   })
 
   test('help shows example commands', async () => {
@@ -64,23 +65,27 @@ describe('CLI invocation', () => {
     const stdout = await new Response(proc.stdout).text()
 
     expect(stdout).toContain('bunx claude-code-acp')
-    expect(stdout).toContain('bun ./my-adapter.ts')
-    expect(stdout).toContain('--format judge')
+    expect(stdout).toContain('prompts.jsonl')
+    expect(stdout).toContain('results.jsonl')
   })
 
-  test('help shows command as positional argument', async () => {
+  test('help shows available commands', async () => {
     const proc = Bun.spawn(['bun', CLI_PATH, '--help'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
     const stdout = await new Response(proc.stdout).text()
 
-    expect(stdout).toContain('<command>')
-    expect(stdout).toContain('bunx claude-code-acp')
+    expect(stdout).toContain('capture')
+    expect(stdout).toContain('trials')
+    expect(stdout).toContain('summarize')
+    expect(stdout).toContain('calibrate')
+    expect(stdout).toContain('balance')
+    expect(stdout).toContain('schemas')
   })
 
   test('fails with non-existent prompts file', async () => {
-    const proc = Bun.spawn(['bun', CLI_PATH, 'nonexistent.jsonl', 'bunx', 'claude-code-acp'], {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', 'nonexistent.jsonl', 'bunx', 'claude-code-acp'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -88,11 +93,14 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).not.toBe(0)
-    expect(stderr).toContain('Error')
+    expect(stderr).toContain('no such file or directory')
   })
 
-  test('fails when no command provided', async () => {
-    const proc = Bun.spawn(['bun', CLI_PATH, 'prompts.jsonl'], {
+  test('fails when no agent command provided', async () => {
+    const tmpFile = `/tmp/test-prompts-${Date.now()}.jsonl`
+    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
+
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', tmpFile], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -103,18 +111,44 @@ describe('CLI invocation', () => {
     expect(stderr).toContain('ACP agent command is required')
   })
 
-  test('accepts command as positional arguments', async () => {
-    const tmpFile = `/tmp/test-prompts-${Date.now()}.jsonl`
-    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
-
-    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'echo', 'test', '--help'], {
+  test('fails with unknown command', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'unknown-command'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    await proc.exited
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
 
-    // Just verify it doesn't fail with parse error
-    // (it will fail to connect, but that's expected)
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Unknown command')
+  })
+
+  test('capture command shows help with --help', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', '--help'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('capture')
+    expect(stdout).toContain('prompts.jsonl')
+    expect(stdout).toContain('--output')
+  })
+
+  test('trials command shows help with --help', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'trials', '--help'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stdout = await new Response(proc.stdout).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('trials')
+    expect(stdout).toContain('-k')
+    expect(stdout).toContain('pass@k')
   })
 })
 
@@ -127,7 +161,6 @@ const SummaryResultSchema = z.object({
   input: z.string(),
   output: z.string(),
   toolCalls: z.array(z.string()),
-  status: z.enum(['passed', 'failed', 'error', 'timeout']),
   duration: z.number(),
 })
 
@@ -136,13 +169,13 @@ const TrajectoryStepSchema = z.discriminatedUnion('type', [
     type: z.literal('thought'),
     content: z.string(),
     timestamp: z.number(),
-    stepId: z.string(),
+    stepId: z.string().optional(),
   }),
   z.object({
     type: z.literal('message'),
     content: z.string(),
     timestamp: z.number(),
-    stepId: z.string(),
+    stepId: z.string().optional(),
   }),
   z.object({
     type: z.literal('tool_call'),
@@ -152,22 +185,17 @@ const TrajectoryStepSchema = z.discriminatedUnion('type', [
     output: z.unknown().optional(),
     duration: z.number().optional(),
     timestamp: z.number(),
-    stepId: z.string(),
+    stepId: z.string().optional(),
   }),
   z.object({
     type: z.literal('plan'),
-    entries: z.array(
-      z.object({
-        content: z.string(),
-        status: z.string(),
-      }),
-    ),
+    entries: z.array(z.unknown()),
     timestamp: z.number(),
-    stepId: z.string(),
+    stepId: z.string().optional(),
   }),
 ])
 
-const FullResultSchema = z.object({
+const CaptureResultSchema = z.object({
   id: z.string(),
   input: z.string(),
   output: z.string(),
@@ -179,7 +207,7 @@ const FullResultSchema = z.object({
     end: z.number(),
     firstResponse: z.number().optional(),
   }),
-  status: z.enum(['passed', 'failed', 'error', 'timeout']),
+  toolErrors: z.boolean(),
   errors: z.array(z.string()).optional(),
 })
 
@@ -187,12 +215,12 @@ const FullResultSchema = z.object({
 // Sample Output Data (matches harness output format)
 // ============================================================================
 
-const SAMPLE_SUMMARY_JSONL = `{"id":"test-001","input":"Create a button","output":"I created the button","toolCalls":["Write"],"status":"passed","duration":1234}
-{"id":"test-002","input":"Fix the bug","output":"I fixed the bug","toolCalls":["Read","Edit"],"status":"passed","duration":2567}
-{"id":"test-003","input":"Broken test","output":"","toolCalls":[],"status":"failed","duration":500}`
+const SAMPLE_SUMMARY_JSONL = `{"id":"test-001","input":"Create a button","output":"I created the button","toolCalls":["Write"],"duration":1234}
+{"id":"test-002","input":"Fix the bug","output":"I fixed the bug","toolCalls":["Read","Edit"],"duration":2567}
+{"id":"test-003","input":"Broken test","output":"","toolCalls":[],"duration":500}`
 
-const SAMPLE_FULL_JSONL = `{"id":"test-001","input":"Create a button","output":"I created the button","trajectory":[{"type":"thought","content":"I'll create a button template","timestamp":100,"stepId":"test-001-step-1"},{"type":"tool_call","name":"Write","status":"completed","input":{"file_path":"src/button.tsx","content":"export const Button = () => <button>Click</button>"},"output":"File written","duration":234,"timestamp":150,"stepId":"test-001-step-2"},{"type":"message","content":"I created the button","timestamp":500,"stepId":"test-001-step-3"}],"metadata":{"category":"ui","agent":"claude-code-acp"},"timing":{"start":1704067200000,"end":1704067201234,"firstResponse":100},"status":"passed"}
-{"id":"test-002","input":"Fix the bug","output":"I fixed the bug","trajectory":[{"type":"tool_call","name":"Read","status":"completed","input":{"file_path":"src/app.ts"},"output":"file contents...","duration":100,"timestamp":50,"stepId":"test-002-step-1"},{"type":"tool_call","name":"Edit","status":"completed","input":{"file_path":"src/app.ts","old_string":"bug","new_string":"fix"},"duration":150,"timestamp":200,"stepId":"test-002-step-2"},{"type":"message","content":"I fixed the bug","timestamp":400,"stepId":"test-002-step-3"}],"metadata":{"category":"bugfix","agent":"claude-code-acp"},"timing":{"start":1704067300000,"end":1704067302567},"status":"passed"}`
+const SAMPLE_CAPTURE_JSONL = `{"id":"test-001","input":"Create a button","output":"I created the button","trajectory":[{"type":"thought","content":"I'll create a button template","timestamp":100,"stepId":"test-001-step-1"},{"type":"tool_call","name":"Write","status":"completed","input":{"file_path":"src/button.tsx","content":"export const Button = () => <button>Click</button>"},"output":"File written","duration":234,"timestamp":150,"stepId":"test-001-step-2"},{"type":"message","content":"I created the button","timestamp":500,"stepId":"test-001-step-3"}],"metadata":{"category":"ui","agent":"claude-code-acp"},"timing":{"start":1704067200000,"end":1704067201234,"firstResponse":100},"toolErrors":false}
+{"id":"test-002","input":"Fix the bug","output":"I fixed the bug","trajectory":[{"type":"tool_call","name":"Read","status":"completed","input":{"file_path":"src/app.ts"},"output":"file contents...","duration":100,"timestamp":50,"stepId":"test-002-step-1"},{"type":"tool_call","name":"Edit","status":"completed","input":{"file_path":"src/app.ts","old_string":"bug","new_string":"fix"},"duration":150,"timestamp":200,"stepId":"test-002-step-2"},{"type":"message","content":"I fixed the bug","timestamp":400,"stepId":"test-002-step-3"}],"metadata":{"category":"bugfix","agent":"claude-code-acp"},"timing":{"start":1704067300000,"end":1704067302567},"toolErrors":false}`
 
 // ============================================================================
 // Downstream Pattern Tests
@@ -214,12 +242,11 @@ describe('downstream patterns: summary JSONL', () => {
     }
   })
 
-  test('filters by status (jq pattern)', () => {
+  test('filters by output presence (jq pattern)', () => {
     const results = parseResults(SAMPLE_SUMMARY_JSONL)
-    const failed = results.filter((r) => r.status === 'failed')
+    const withOutput = results.filter((r) => r.output.length > 0)
 
-    expect(failed).toHaveLength(1)
-    expect(failed[0]?.id).toBe('test-003')
+    expect(withOutput).toHaveLength(2)
   })
 
   test('calculates average duration (jq pattern)', () => {
@@ -240,35 +267,35 @@ describe('downstream patterns: summary JSONL', () => {
     expect(toolCounts).toEqual({ Write: 1, Read: 1, Edit: 1 })
   })
 
-  test('calculates pass rate (jq pattern)', () => {
+  test('calculates success rate by output presence', () => {
     const results = parseResults(SAMPLE_SUMMARY_JSONL)
-    const passed = results.filter((r) => r.status === 'passed').length
+    const withOutput = results.filter((r) => r.output.length > 0).length
     const total = results.length
 
-    expect(passed).toBe(2)
+    expect(withOutput).toBe(2)
     expect(total).toBe(3)
-    expect(passed / total).toBeCloseTo(0.667, 2)
+    expect(withOutput / total).toBeCloseTo(0.667, 2)
   })
 })
 
-describe('downstream patterns: full JSONL', () => {
+describe('downstream patterns: capture JSONL', () => {
   const parseResults = (jsonl: string) =>
     jsonl
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line))
 
-  test('parses full JSONL with trajectories', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+  test('parses capture JSONL with trajectories', () => {
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
 
     expect(results).toHaveLength(2)
     for (const result of results) {
-      expect(() => FullResultSchema.parse(result)).not.toThrow()
+      expect(() => CaptureResultSchema.parse(result)).not.toThrow()
     }
   })
 
   test('step IDs follow expected format', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
 
     for (const result of results) {
       for (const step of result.trajectory) {
@@ -278,7 +305,7 @@ describe('downstream patterns: full JSONL', () => {
   })
 
   test('step-level retrieval pattern works', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
 
     // Build step index (pattern from downstream.md)
     const stepIndex = new Map<string, unknown>()
@@ -296,7 +323,7 @@ describe('downstream patterns: full JSONL', () => {
   })
 
   test('extracts tool calls from trajectory', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
     const result = results[1] // test-002
 
     const toolCalls = result.trajectory.filter((s: { type: string }) => s.type === 'tool_call')
@@ -305,11 +332,18 @@ describe('downstream patterns: full JSONL', () => {
   })
 
   test('filters by metadata category', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
     const uiResults = results.filter((r) => r.metadata.category === 'ui')
 
     expect(uiResults).toHaveLength(1)
     expect(uiResults[0]?.id).toBe('test-001')
+  })
+
+  test('identifies results with tool errors', () => {
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
+    const withErrors = results.filter((r) => r.toolErrors)
+
+    expect(withErrors).toHaveLength(0) // Sample data has no errors
   })
 })
 
@@ -347,7 +381,7 @@ describe('downstream patterns: advanced filtering', () => {
 
   test('deduplicates by ID keeping latest (merge pattern)', () => {
     const combinedJsonl = `${SAMPLE_SUMMARY_JSONL}
-{"id":"test-001","input":"Create a button v2","output":"I created the button v2","toolCalls":["Write","Edit"],"status":"passed","duration":1500}`
+{"id":"test-001","input":"Create a button v2","output":"I created the button v2","toolCalls":["Write","Edit"],"duration":1500}`
 
     const results = parseResults(combinedJsonl)
 
@@ -364,7 +398,7 @@ describe('downstream patterns: advanced filtering', () => {
   })
 
   test('groups by category and counts', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
 
     // Group by category (simulates jq group_by pattern)
     const grouped = results.reduce<Record<string, number>>((acc, r) => {
@@ -377,7 +411,7 @@ describe('downstream patterns: advanced filtering', () => {
   })
 
   test('extracts timing information', () => {
-    const results = parseResults(SAMPLE_FULL_JSONL)
+    const results = parseResults(SAMPLE_CAPTURE_JSONL)
     const result = results[0]
 
     expect(result.timing.start).toBe(1704067200000)
@@ -395,7 +429,7 @@ describe('MCP server config parsing', () => {
   test('parses stdio MCP server config', () => {
     const json = '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}'
     const proc = Bun.spawn(
-      ['bun', CLI_PATH, '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
+      ['bun', CLI_PATH, 'capture', '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
       {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -410,7 +444,7 @@ describe('MCP server config parsing', () => {
     const json =
       '{"type":"http","name":"api","url":"https://example.com/mcp","headers":[{"name":"Authorization","value":"Bearer token"}]}'
     const proc = Bun.spawn(
-      ['bun', CLI_PATH, '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
+      ['bun', CLI_PATH, 'capture', '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
       {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -428,6 +462,7 @@ describe('MCP server config parsing', () => {
       [
         'bun',
         CLI_PATH,
+        'capture',
         '/tmp/test.jsonl',
         'bunx',
         'claude-code-acp',
@@ -457,7 +492,7 @@ describe('error handling', () => {
     const tmpFile = `/tmp/invalid-${Date.now()}.jsonl`
     await Bun.write(tmpFile, '{invalid json}\n')
 
-    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp'], {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', tmpFile, 'bunx', 'claude-code-acp'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -468,11 +503,8 @@ describe('error handling', () => {
     expect(stderr).toContain('Invalid prompt at line 1')
   })
 
-  test('fails with invalid format option', async () => {
-    const tmpFile = `/tmp/test-${Date.now()}.jsonl`
-    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
-
-    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp', '--format', 'invalid'], {
+  test('capture command requires prompts path', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -480,14 +512,11 @@ describe('error handling', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(1)
-    expect(stderr).toContain('Invalid format')
+    expect(stderr).toContain('prompts.jsonl path is required')
   })
 
-  test('fails when judge format used without output path', async () => {
-    const tmpFile = `/tmp/test-${Date.now()}.jsonl`
-    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
-
-    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp', '--format', 'judge'], {
+  test('summarize command requires input path', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'summarize'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -495,6 +524,6 @@ describe('error handling', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(1)
-    expect(stderr).toContain('--format judge requires --output')
+    expect(stderr).toContain('results.jsonl path is required')
   })
 })

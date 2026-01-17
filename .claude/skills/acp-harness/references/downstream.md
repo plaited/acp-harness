@@ -4,7 +4,7 @@ Patterns for piping harness output to analysis tools.
 
 ## Loading Results
 
-Both output formats use JSONL (newline-delimited JSON):
+All output formats use JSONL (newline-delimited JSON):
 
 ```typescript
 // TypeScript pattern (validated in tests)
@@ -17,58 +17,74 @@ const results = parseResults(await Bun.file('results.jsonl').text())
 
 ## jq Analysis
 
-Summary JSONL is designed for quick analysis with `jq`:
+Use `summarize` command for quick jq analysis:
 
 ```bash
+# First derive summary
+acp-harness summarize results.jsonl -o summary.jsonl
+
 # Calculate average duration
-cat results.jsonl | jq -s 'map(.duration) | add / length'
+cat summary.jsonl | jq -s 'map(.duration) | add / length'
 
 # Count tool usage
-cat results.jsonl | jq -s 'map(.toolCalls) | flatten | group_by(.) | map({tool: .[0], count: length})'
+cat summary.jsonl | jq -s 'map(.toolCalls) | flatten | group_by(.) | map({tool: .[0], count: length})'
 
-# Filter by status
-cat results.jsonl | jq 'select(.status == "failed")'
-
-# Pass rate
-cat results.jsonl | jq -s 'map(select(.status == "passed")) | length as $p | length as $t | "\($p)/\($t) passed"'
-
-# Group by category
+# Group by category (from full results)
 cat results.jsonl | jq -s 'group_by(.metadata.category) | map({category: .[0].metadata.category, count: length})'
 
 # Find slowest runs
-cat results.jsonl | jq -s 'sort_by(-.duration) | .[0:5] | map({id, duration})'
+cat summary.jsonl | jq -s 'sort_by(-.duration) | .[0:5] | map({id, duration})'
+
+# Find results with tool errors
+cat results.jsonl | jq 'select(.toolErrors == true)'
 ```
 
 ## TypeScript Analysis Patterns
 
 These patterns are validated by tests in `bin/tests/cli.spec.ts`:
 
-### Filter by Status
+### Filter by Tool Errors
 
 ```typescript
-const failed = results.filter((r) => r.status === 'failed')
-const passed = results.filter((r) => r.status === 'passed')
+// Results where any tool call failed
+const withErrors = results.filter((r) => r.toolErrors)
+const noErrors = results.filter((r) => !r.toolErrors)
+```
+
+### Filter by Grader Score (if grader was used)
+
+```typescript
+// When using --grader flag, results have a score field
+const passed = results.filter((r) => r.score?.pass)
+const failed = results.filter((r) => r.score && !r.score.pass)
 const passRate = passed.length / results.length
 ```
 
 ### Filter by Tool Usage
 
 ```typescript
-// Find runs that used Write tool
-const withWrite = results.filter((r) => r.toolCalls.includes('Write'))
+// Find runs that used Write tool (from trajectory)
+const withWrite = results.filter((r) =>
+  r.trajectory.some((s) => s.type === 'tool_call' && s.name === 'Write')
+)
 
-// Find runs that used multiple tools
-const multiTool = results.filter((r) => r.toolCalls.length > 1)
+// From summary format
+const summaries = parseResults(await Bun.file('summary.jsonl').text())
+const withWriteSummary = summaries.filter((r) => r.toolCalls.includes('Write'))
 ```
 
 ### Filter by Duration
 
 ```typescript
 // Slow runs (> 2 seconds)
-const slow = results.filter((r) => r.duration > 2000)
+const slow = results.filter((r) =>
+  (r.timing.end - r.timing.start) > 2000
+)
 
 // Find top 5 slowest
-const slowest = [...results].sort((a, b) => b.duration - a.duration).slice(0, 5)
+const slowest = [...results]
+  .sort((a, b) => (b.timing.end - b.timing.start) - (a.timing.end - a.timing.start))
+  .slice(0, 5)
 ```
 
 ### Filter by Metadata
@@ -88,7 +104,9 @@ const grouped = results.reduce<Record<string, number>>((acc, r) => {
 ### Count Tool Usage
 
 ```typescript
-const allTools = results.flatMap((r) => r.toolCalls)
+const allTools = results.flatMap((r) =>
+  r.trajectory.filter((s) => s.type === 'tool_call').map((s) => s.name)
+)
 const toolCounts = allTools.reduce<Record<string, number>>((acc, tool) => {
   acc[tool] = (acc[tool] ?? 0) + 1
   return acc
@@ -108,18 +126,19 @@ const deduped = Array.from(byId.values())
 
 ## Step-Level Retrieval
 
-For judge format, correlate markdown step IDs with full JSONL:
+Correlate step IDs from markdown summary with full trajectory:
 
 ```typescript
-// Load both files
-const markdown = await Bun.file('results.md').text()
-const fullResults = parseResults(await Bun.file('results.full.jsonl').text())
+// Load full results
+const results = parseResults(await Bun.file('results.jsonl').text())
 
 // Build step index
 const stepIndex = new Map<string, unknown>()
-for (const result of fullResults) {
+for (const result of results) {
   for (const step of result.trajectory) {
-    stepIndex.set(step.stepId, step)
+    if (step.stepId) {
+      stepIndex.set(step.stepId, step)
+    }
   }
 }
 
@@ -145,6 +164,34 @@ const duration = result.timing.end - result.timing.start
 const timeToFirstResponse = result.timing.firstResponse // ms after start
 ```
 
+## Grader Integration
+
+Use the `--grader` flag to add scoring to capture results:
+
+```typescript
+// my-grader.ts
+import type { Grader } from '@plaited/acp-harness/schemas'
+
+export const grade: Grader = async ({ input, output, expected, trajectory }) => {
+  const pass = output.toLowerCase().includes(expected?.toLowerCase() ?? '')
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reasoning: pass ? 'Contains expected answer' : 'Missing expected answer'
+  }
+}
+```
+
+```bash
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
+```
+
+Results will include a `score` field:
+
+```jsonl
+{"id":"test-001",...,"score":{"pass":true,"score":1.0,"reasoning":"Contains expected answer"}}
+```
+
 ## LLM-as-Judge
 
 ### Large Context Models (Gemini 1M+)
@@ -157,7 +204,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
-const results = parseResults(await Bun.file('results.full.jsonl').text())
+const results = parseResults(await Bun.file('results.jsonl').text())
 
 const prompt = `
 Evaluate these agent trajectories for code quality and reasoning.
@@ -178,10 +225,13 @@ console.log(response.response.text())
 
 ### Medium Context Models (Claude 200k)
 
-Use full trajectory for most runs:
+Use markdown summary for smaller context:
 
 ```typescript
 import Anthropic from '@anthropic-ai/sdk'
+
+// Generate markdown summary first
+await Bun.$`acp-harness summarize results.jsonl --markdown -o results.md`
 
 const client = new Anthropic()
 const markdown = await Bun.file('results.md').text()
@@ -218,12 +268,16 @@ for (const result of results) {
     output: result.output,
     expected: result.expected,
     scores: {
-      passed: result.status === 'passed' ? 1 : 0,
-      duration_ms: result.duration,
+      toolErrors: result.toolErrors ? 0 : 1,
+      duration_ms: result.timing.end - result.timing.start,
+      // Include grader score if available
+      ...(result.score && { passed: result.score.pass ? 1 : 0 }),
     },
     metadata: {
       ...result.metadata,
-      toolCalls: result.toolCalls,
+      toolCalls: result.trajectory
+        .filter((s) => s.type === 'tool_call')
+        .map((s) => s.name),
     },
   })
 }
@@ -258,18 +312,24 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          bunx @plaited/acp-harness prompts.jsonl \
-            --format judge \
+          bunx @plaited/acp-harness capture prompts.jsonl \
+            bunx claude-code-acp \
             --progress \
-            -o eval-results
+            -o results.jsonl
+
+      - name: Generate summary
+        run: |
+          bunx @plaited/acp-harness summarize results.jsonl -o summary.jsonl
+          bunx @plaited/acp-harness summarize results.jsonl --markdown -o results.md
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
           name: eval-results
           path: |
-            eval-results.md
-            eval-results.full.jsonl
+            results.jsonl
+            summary.jsonl
+            results.md
 ```
 
 ## Output Aggregation
@@ -278,11 +338,30 @@ Combine multiple runs:
 
 ```bash
 # Append mode during runs
-bunx @plaited/acp-harness prompts-1.jsonl --append -o combined.jsonl
-bunx @plaited/acp-harness prompts-2.jsonl --append -o combined.jsonl
+acp-harness capture prompts-1.jsonl bunx claude-code-acp --append -o combined.jsonl
+acp-harness capture prompts-2.jsonl bunx claude-code-acp --append -o combined.jsonl
 
 # Merge separate files
 cat run1.jsonl run2.jsonl run3.jsonl > combined.jsonl
 
 # Dedupe by ID (keep latest) - use TypeScript pattern above
+```
+
+## Trials for Non-Determinism Analysis
+
+Use the `trials` command to measure pass@k/pass^k:
+
+```bash
+acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+```
+
+```typescript
+const trials = parseResults(await Bun.file('trials.jsonl').text())
+
+for (const result of trials) {
+  console.log(`${result.id}:`)
+  console.log(`  Pass rate: ${(result.passRate * 100).toFixed(1)}%`)
+  console.log(`  pass@${result.k}: ${(result.passAtK * 100).toFixed(1)}%`)
+  console.log(`  pass^${result.k}: ${(result.passExpK * 100).toFixed(1)}%`)
+}
 ```

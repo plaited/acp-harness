@@ -18,6 +18,11 @@
     "acp-harness": "./bin/cli.ts"
   },
   "type": "module",
+  "exports": {
+    ".": "./src/acp.ts",
+    "./schemas": "./src/schemas.ts",
+    "./harness": "./src/harness.ts"
+  },
   "files": [
     "./src/**",
     "./bin/**",
