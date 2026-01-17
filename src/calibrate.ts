@@ -10,6 +10,7 @@
 
 import { parseArgs } from 'node:util'
 import { DEFAULT_CALIBRATION_SAMPLE_SIZE } from './constants.ts'
+import { loadGrader } from './grader-loader.ts'
 import type { CalibrationSample, CaptureResult, Grader, GraderResult, TrajectoryStep } from './schemas.ts'
 import { CaptureResultSchema } from './schemas.ts'
 
@@ -256,7 +257,7 @@ Arguments:
 Options:
   -o, --output      Output file (default: stdout)
   -s, --sample      Number of failures to sample (default: ${DEFAULT_CALIBRATION_SAMPLE_SIZE})
-  -g, --grader      Path to alternative grader for re-scoring comparison
+  -g, --grader      Path to alternative grader (.ts/.js module or executable script)
   -h, --help        Show this help message
 
 Output:
@@ -282,13 +283,12 @@ Examples:
   // Load grader if specified
   let grader: Grader | undefined
   if (values.grader) {
-    const graderPath = resolvePath(values.grader)
-    const graderModule = await import(graderPath)
-    if (typeof graderModule.grade !== 'function') {
-      console.error(`Error: Grader module must export a 'grade' function`)
+    try {
+      grader = await loadGrader(values.grader)
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : error}`)
       process.exit(1)
     }
-    grader = graderModule.grade as Grader
   }
 
   await runCalibrate({

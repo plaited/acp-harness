@@ -10,6 +10,7 @@
 
 import { parseArgs } from 'node:util'
 import { loadPrompts } from './capture.ts'
+import { loadGrader } from './grader-loader.ts'
 import type { Grader, ValidationResult } from './schemas.ts'
 
 // ============================================================================
@@ -139,7 +140,7 @@ Arguments:
 
 Options:
   -o, --output      Output file (default: stdout)
-  -g, --grader      Path to grader module (required)
+  -g, --grader      Path to grader (.ts/.js module or executable script, required)
   -h, --help        Show this help message
 
 Output:
@@ -171,13 +172,13 @@ Examples:
   }
 
   // Load grader
-  const graderPath = resolvePath(values.grader)
-  const graderModule = await import(graderPath)
-  if (typeof graderModule.grade !== 'function') {
-    console.error(`Error: Grader module must export a 'grade' function`)
+  let grader: Grader
+  try {
+    grader = await loadGrader(values.grader)
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : error}`)
     process.exit(1)
   }
-  const grader = graderModule.grade as Grader
 
   await runValidateRefs({
     promptsPath,

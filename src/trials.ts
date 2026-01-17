@@ -17,6 +17,7 @@ import { createACPClient } from './acp-client.ts'
 import { createPrompt } from './acp-helpers.ts'
 import { extractOutput, extractTrajectory, loadPrompts } from './capture.ts'
 import { DEFAULT_HARNESS_TIMEOUT, DEFAULT_TRIAL_COUNT } from './constants.ts'
+import { loadGrader } from './grader-loader.ts'
 import type { Grader, TrialEntry, TrialResult } from './schemas.ts'
 import { McpServerSchema } from './schemas.ts'
 
@@ -329,19 +330,26 @@ Options:
   --progress        Show progress to stderr
   --append          Append to output file
   --mcp-server      MCP server config JSON (repeatable)
-  -g, --grader      Path to grader module (computes pass@k/pass^k)
+  -g, --grader      Path to grader (.ts/.js module or executable script)
   -h, --help        Show this help message
 
 Output Format:
   Without grader: Raw trials with trajectories
-  With grader: Trials plus passRate, passAtK, passExpK metrics
+  With grader: Trials plus pass@k metrics (passRate, passAtK, passExpK)
+
+Graders:
+  TS/JS modules must export a 'grade' function.
+  Executable scripts (Python, etc.) use stdin/stdout JSON protocol.
 
 Examples:
   # Capture only
   acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 -o trials.jsonl
 
-  # With grader (computes metrics)
+  # With TypeScript grader
   acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+
+  # With Python grader
+  acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.py -o trials.jsonl
 `)
     return
   }
@@ -361,13 +369,12 @@ Examples:
   // Load grader if specified
   let grader: Grader | undefined
   if (values.grader) {
-    const graderPath = resolvePath(values.grader)
-    const graderModule = await import(graderPath)
-    if (typeof graderModule.grade !== 'function') {
-      console.error(`Error: Grader module must export a 'grade' function`)
+    try {
+      grader = await loadGrader(values.grader)
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : error}`)
       process.exit(1)
     }
-    grader = graderModule.grade as Grader
   }
 
   // Parse MCP server configurations
