@@ -152,7 +152,7 @@ acp-harness summarize results.jsonl --markdown -o results.md
 
 ## Calibrate Command
 
-Sample failures for grader review.
+Sample failures for grader review. Calibration helps you distinguish between **agent failures** (agent did wrong thing) and **grader bugs** (agent was correct, grader too strict).
 
 ```bash
 # Sample failures for human review
@@ -162,9 +162,149 @@ acp-harness calibrate results.jsonl --sample 10 -o calibration.md
 acp-harness calibrate results.jsonl --grader ./loose-grader.ts --sample 10 -o comparison.md
 ```
 
+See [eval-concepts.md](references/eval-concepts.md#grader-calibration) for why calibration matters.
+
+## Validate-Refs Command
+
+Check that reference solutions pass your grader before evaluating agents.
+
+```bash
+# Validate reference solutions
+acp-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
+
+# Check for failures
+cat validation.jsonl | jq 'select(.pass == false)'
+```
+
+### Why Use This?
+
+If your reference solution fails your own grader:
+- The task definition is ambiguous
+- The grader is too strict
+- The expected output is wrong
+
+**Fix the eval before evaluating the agent.**
+
+### Input Format
+
+Prompts must include a `reference` field:
+
+```jsonl
+{"id":"test-001","input":"Create a button component","expected":"<button>","reference":"export const Button = () => <button>Click</button>"}
+```
+
+### Output Format
+
+```jsonl
+{"id":"test-001","input":"Create a button component","reference":"export const Button = () => <button>Click</button>","pass":true,"score":1.0,"reasoning":"Contains expected element"}
+```
+
+## Balance Command
+
+Analyze test set coverage to ensure balanced evaluation.
+
+```bash
+# Analyze prompt distribution
+acp-harness balance prompts.jsonl -o balance.json
+
+# Pretty print
+acp-harness balance prompts.jsonl | jq .
+```
+
+### Why Use This?
+
+An eval with only "make X work" misses "don't break Y". Balance analysis shows:
+
+- **Category distribution** (from `metadata.category`)
+- **Positive/negative case ratio**
+- **Coverage gaps**
+
+### Output Format
+
+```json
+{
+  "total": 50,
+  "categories": {
+    "ui": 20,
+    "logic": 15,
+    "api": 10,
+    "edge-case": 5
+  },
+  "hasExpected": 45,
+  "hasReference": 30,
+  "hasMetadata": 50
+}
+```
+
+### Balanced Eval Design
+
+Include both positive and negative cases:
+
+| Type | Example | Purpose |
+|------|---------|---------|
+| Positive | "Add a login button" | Agent should succeed |
+| Negative | "Add a button without breaking tests" | Agent should not break things |
+| Edge case | "Handle empty input gracefully" | Agent should be robust |
+
+See [eval-concepts.md](references/eval-concepts.md#test-set-balance) for more on balanced test sets.
+
+## Schemas Command
+
+Export JSON schemas for non-TypeScript tools.
+
+```bash
+# List available schemas
+acp-harness schemas
+
+# Export all schemas as JSON
+acp-harness schemas --json -o schemas.json
+
+# Export specific schema
+acp-harness schemas CaptureResult --json
+acp-harness schemas TrialResult --json
+acp-harness schemas GraderResult --json
+```
+
+### Available Schemas
+
+| Schema | Description |
+|--------|-------------|
+| `CaptureResult` | Single capture output (id, input, output, trajectory, timing) |
+| `TrialResult` | Multi-run trial output (includes passAtK, passExpK) |
+| `GraderResult` | Grader return value (pass, score, reasoning) |
+| `PromptInput` | Input prompt format |
+| `TrajectoryStep` | Single step in trajectory array |
+| `SummaryResult` | Compact summary format |
+
+### Usage in Other Languages
+
+Export schemas for validation in Python, Go, etc.:
+
+```bash
+# Export all schemas
+acp-harness schemas --json -o schemas.json
+
+# Use in Python with jsonschema
+python -c "
+import json
+from jsonschema import validate
+
+with open('schemas.json') as f:
+    schemas = json.load(f)
+
+with open('results.jsonl') as f:
+    for line in f:
+        result = json.loads(line)
+        validate(result, schemas['CaptureResult'])
+        print(f'{result[\"id\"]}: valid')
+"
+```
+
 ## Grader Interface
 
-User provides a TypeScript file exporting `grade`:
+Graders provide semantic pass/fail scoring for captured trajectories. The harness supports graders written in **any language**.
+
+### TypeScript Grader
 
 ```typescript
 // my-grader.ts
@@ -179,6 +319,33 @@ export const grade: Grader = async ({ input, output, expected, trajectory }) => 
   }
 }
 ```
+
+### Python/Executable Graders
+
+Any executable can be a grader using stdin/stdout JSON protocol:
+
+```python
+#!/usr/bin/env python3
+import json, sys
+
+data = json.load(sys.stdin)
+output = data.get("output", "").lower()
+expected = (data.get("expected") or "").lower()
+
+pass_result = expected in output if expected else True
+print(json.dumps({
+    "pass": pass_result,
+    "score": 1.0 if pass_result else 0.0,
+    "reasoning": "Contains expected" if pass_result else "Missing expected"
+}))
+```
+
+```bash
+chmod +x ./grader.py
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+```
+
+See [graders.md](references/graders.md) for complete polyglot grader documentation including shell scripts and LLM-as-judge patterns.
 
 ## Input Format
 
@@ -276,6 +443,8 @@ See [downstream.md](references/downstream.md) for integration patterns with Brai
 | `bunx @plaited/acp-harness` | CLI help |
 | [output-formats.md](references/output-formats.md) | JSONL schemas, command details |
 | [downstream.md](references/downstream.md) | Integration patterns (Braintrust, jq, custom scorers) |
+| [graders.md](references/graders.md) | Polyglot grader documentation (TypeScript, Python, shell) |
+| [eval-concepts.md](references/eval-concepts.md) | Evaluation concepts (pass@k, pass^k, calibration) |
 
 ## Related
 

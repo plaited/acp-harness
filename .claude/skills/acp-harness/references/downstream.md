@@ -166,7 +166,9 @@ const timeToFirstResponse = result.timing.firstResponse // ms after start
 
 ## Grader Integration
 
-Use the `--grader` flag to add scoring to capture results:
+Use the `--grader` flag to add scoring to capture results. The harness supports graders written in **any language**.
+
+### TypeScript Grader
 
 ```typescript
 // my-grader.ts
@@ -186,11 +188,79 @@ export const grade: Grader = async ({ input, output, expected, trajectory }) => 
 acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
 ```
 
+### Python Grader
+
+Python graders use stdin/stdout JSON protocol:
+
+```python
+#!/usr/bin/env python3
+"""
+Grader that checks if output contains expected answer.
+Make executable: chmod +x grader.py
+"""
+import json
+import sys
+
+# Read input from stdin
+data = json.load(sys.stdin)
+
+# Extract fields
+output = data.get("output", "").lower()
+expected = (data.get("expected") or "").lower()
+trajectory = data.get("trajectory", [])
+
+# Example: check tool usage in trajectory
+used_write = any(
+    step.get("type") == "tool_call" and step.get("name") == "Write"
+    for step in trajectory
+)
+
+# Scoring logic
+pass_result = expected in output if expected else True
+
+# Write result to stdout
+print(json.dumps({
+    "pass": pass_result,
+    "score": 1.0 if pass_result else 0.0,
+    "reasoning": f"Contains expected: {pass_result}, Used Write tool: {used_write}"
+}))
+```
+
+```bash
+chmod +x ./grader.py
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+```
+
+### Detection Logic
+
+The harness determines grader type by file extension:
+
+| Extension | Treatment |
+|-----------|-----------|
+| `.ts`, `.js`, `.mjs`, `.cjs` | Import as ES module |
+| Everything else (`.py`, `.sh`, etc.) | Execute as subprocess |
+
+### Testing Graders Independently
+
+Test graders before using with the harness:
+
+```bash
+# Test Python grader
+echo '{"input":"hello","output":"hello world","expected":"world"}' | ./grader.py
+
+# Test shell grader
+echo '{"input":"test","output":"the answer is 42","expected":"42"}' | ./grader.sh
+```
+
+### Output Format
+
 Results will include a `score` field:
 
 ```jsonl
 {"id":"test-001",...,"score":{"pass":true,"score":1.0,"reasoning":"Contains expected answer"}}
 ```
+
+See [graders.md](graders.md) for complete documentation including shell scripts and LLM-as-judge patterns.
 
 ## LLM-as-Judge
 
