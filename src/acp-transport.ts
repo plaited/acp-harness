@@ -275,9 +275,12 @@ export const createACPTransport = (config: ACPTransportConfig) => {
 
     // Read stdout for JSON-RPC messages
     const readStdout = async () => {
+      if (!subprocess) {
+        throw new ACPTransportError('Subprocess not started')
+      }
       // Type assertion needed: Bun's ReadableStreamDefaultReader includes readMany
       // but node:stream/web reader returned by getReader() doesn't have it
-      const reader = subprocess!.stdout.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
+      const reader = subprocess.stdout.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
       stdoutReader = reader
       const decoder = new TextDecoder()
 
@@ -303,9 +306,12 @@ export const createACPTransport = (config: ACPTransportConfig) => {
 
     // Read stderr for debugging
     const readStderr = async () => {
+      if (!subprocess) {
+        throw new ACPTransportError('Subprocess not started')
+      }
       // Type assertion needed: Bun's ReadableStreamDefaultReader includes readMany
       // but node:stream/web reader returned by getReader() doesn't have it
-      const reader = subprocess!.stderr.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
+      const reader = subprocess.stderr.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
       stderrReader = reader
       const decoder = new TextDecoder()
 
