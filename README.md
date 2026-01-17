@@ -72,10 +72,11 @@ This package includes an **acp-harness skill** for AI coding agents with complet
 - Output format schemas
 - Integration patterns (Braintrust, jq, custom scorers)
 
-**Install via Claude Code:**
+**Other AI coding agents:**
 
 ```bash
-/plugin marketplace add plaited/marketplace
+curl -fsSL https://raw.githubusercontent.com/plaited/marketplace/main/install.sh | bash -s -- --agent <agent-name> --plugin development-skills
+
 ```
 
 ## Development
