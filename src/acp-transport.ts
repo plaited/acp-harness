@@ -326,7 +326,8 @@ export const createACPTransport = (config: ACPTransportConfig) => {
       }
     }
 
-    // Start reading streams
+    // Start reading streams (fire-and-forget pattern)
+    // These run concurrently and clean up via optional chaining in close()
     readStdout()
     readStderr()
 

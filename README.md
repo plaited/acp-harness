@@ -10,11 +10,11 @@ CLI tool for capturing agent trajectories from ACP-compatible agents. Execute pr
 
 ```bash
 # Run without installing
-bunx @plaited/acp-harness prompts.jsonl -o results.jsonl
+bunx @plaited/acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
 # Or install globally
 bun add -g @plaited/acp-harness
-acp-harness prompts.jsonl -o results.jsonl
+acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 ```
 
 **Prerequisite:** Install an ACP adapter and set your API key:
@@ -27,10 +27,13 @@ export ANTHROPIC_API_KEY=sk-...
 ## Usage
 
 ```bash
-acp-harness <prompts.jsonl> [options]
+acp-harness <prompts.jsonl> <command> [args...] [options]
+
+Arguments:
+  prompts.jsonl     Input file with evaluation prompts
+  command [args]    ACP agent command to execute
 
 Options:
-  --cmd, --command  ACP agent command (default: "claude-code-acp")
   -o, --output      Output file (default: stdout)
   -c, --cwd         Working directory for agent
   -t, --timeout     Request timeout in ms (default: 60000)
@@ -54,7 +57,7 @@ The harness captures trajectories and outputs structured JSONL. **You provide th
 
 ```bash
 # Capture trajectories
-acp-harness prompts.jsonl -o results.jsonl
+acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
 # Score with your tools
 cat results.jsonl | jq 'select(.status == "failed")'

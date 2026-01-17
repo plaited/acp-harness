@@ -41,7 +41,7 @@ This project uses `.claude/rules/` for project-specific guidance:
 
 **CLI usage:**
 ```bash
-bunx @plaited/acp-harness prompts.jsonl -o results.jsonl
+bunx @plaited/acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 ```
 
 ### Code Style Essentials

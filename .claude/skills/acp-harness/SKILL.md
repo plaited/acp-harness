@@ -29,11 +29,11 @@ CLI tool for capturing trajectories from ACP-compatible agents, optimized for Ty
 
 ```bash
 # Run without installing (recommended for CI)
-bunx @plaited/acp-harness prompts.jsonl -o results.jsonl
+bunx @plaited/acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
 # Or install globally for repeated use
 bun add -g @plaited/acp-harness
-acp-harness prompts.jsonl -o results.jsonl
+acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
 # Or add as project dependency
 bun add @plaited/acp-harness
@@ -65,13 +65,11 @@ The harness is a **capture layer** - it executes prompts and records trajectorie
 
 ```bash
 # Run same prompt with built-in tool
-acp-harness prompts.jsonl \
-  --cmd "bunx claude-code-acp" \
+acp-harness prompts.jsonl bunx claude-code-acp \
   -o results-builtin.jsonl
 
 # Run same prompt with custom skill installed
-acp-harness prompts.jsonl \
-  --cmd "bunx claude-code-acp" \
+acp-harness prompts.jsonl bunx claude-code-acp \
   --cwd /project/with/typescript-lsp-skill \
   -o results-skill.jsonl
 
@@ -140,15 +138,15 @@ flowchart LR
 ### Basic Usage
 
 ```bash
-acp-harness <prompts.jsonl> --cmd <cmd> [options]
+acp-harness <prompts.jsonl> <command> [args...] [options]
 ```
 
 ### Arguments
 
-| Flag | Description | Default |
+| Argument/Flag | Description | Default |
 |------|-------------|---------|
 | `prompts.jsonl` | Input file with prompts to execute | Required |
-| `--cmd, --command` | ACP agent command (e.g., `bunx claude-code-acp`, `bun ./adapter.ts`) | `"claude-code-acp"` |
+| `command [args]` | ACP agent command to execute (e.g., `bunx claude-code-acp`, `bun ./adapter.ts`) | Required |
 | `-o, --output` | Output file/path | stdout |
 | `-c, --cwd` | Working directory for agent | current |
 | `-t, --timeout` | Request timeout in ms | `60000` |
@@ -160,29 +158,23 @@ acp-harness <prompts.jsonl> --cmd <cmd> [options]
 ### Examples
 
 ```bash
-# Using the default claude-code-acp adapter
-acp-harness prompts.jsonl -o results.jsonl
-
-# Using bunx to run an adapter
-acp-harness prompts.jsonl --cmd "bunx claude-code-acp" -o results.jsonl
+# Using an npm package
+acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
 # Using a local adapter script (great for custom adapters in same repo)
-acp-harness prompts.jsonl --cmd "bun ./my-adapter.ts" -o results.jsonl
+acp-harness prompts.jsonl bun ./my-adapter.ts -o results.jsonl
 
 # Judge format - creates two files for downstream scoring
-acp-harness prompts.jsonl --format judge -o results
+acp-harness prompts.jsonl bunx claude-code-acp --format judge -o results
 # Creates: results.md (summary with step IDs) + results.full.jsonl (complete trajectory)
 
-# With MCP server (stdio transport)
-acp-harness prompts.jsonl \
-  --mcp-server '{"type":"stdio","name":"fs","command":["mcp-filesystem","/data"]}'
-
-# With MCP server (HTTP transport)
-acp-harness prompts.jsonl \
-  --mcp-server '{"type":"http","name":"api","url":"http://localhost:3000"}'
+# With MCP server
+acp-harness prompts.jsonl bunx claude-code-acp \
+  --mcp-server '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}' \
+  -o results.jsonl
 
 # Stream with progress
-acp-harness prompts.jsonl --progress -o results.jsonl
+acp-harness prompts.jsonl bunx claude-code-acp --progress -o results.jsonl
 ```
 
 ## Input Format
@@ -291,7 +283,7 @@ See [downstream.md](references/downstream.md) for integration patterns with Brai
 ### Capturing Skill Behavior
 
 ```bash
-bunx @plaited/acp-harness skill-prompts.jsonl \
+bunx @plaited/acp-harness skill-prompts.jsonl bunx claude-code-acp \
   --cwd /project/with/skill \
   -o results.jsonl
 ```
@@ -299,8 +291,8 @@ bunx @plaited/acp-harness skill-prompts.jsonl \
 ### Capturing MCP Server Usage
 
 ```bash
-bunx @plaited/acp-harness mcp-prompts.jsonl \
-  --mcp-server '{"type":"stdio","name":"fs","command":["mcp-filesystem"]}' \
+bunx @plaited/acp-harness mcp-prompts.jsonl bunx claude-code-acp \
+  --mcp-server '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":[],"env":[]}' \
   -o results.jsonl
 ```
 

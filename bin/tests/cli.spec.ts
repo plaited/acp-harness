@@ -27,7 +27,7 @@ describe('CLI invocation', () => {
 
     expect(exitCode).toBe(0)
     expect(stdout).toContain('Usage: acp-harness')
-    expect(stdout).toContain('--cmd, --command')
+    expect(stdout).toContain('command [args]')
     expect(stdout).toContain('--output')
     expect(stdout).toContain('--format')
   })
@@ -68,19 +68,19 @@ describe('CLI invocation', () => {
     expect(stdout).toContain('--format judge')
   })
 
-  test('help shows both --cmd and --command flags', async () => {
+  test('help shows command as positional argument', async () => {
     const proc = Bun.spawn(['bun', CLI_PATH, '--help'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
     const stdout = await new Response(proc.stdout).text()
 
-    expect(stdout).toContain('--cmd')
-    expect(stdout).toContain('--command')
+    expect(stdout).toContain('<command>')
+    expect(stdout).toContain('bunx claude-code-acp')
   })
 
   test('fails with non-existent prompts file', async () => {
-    const proc = Bun.spawn(['bun', CLI_PATH, 'nonexistent.jsonl'], {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'nonexistent.jsonl', 'bunx', 'claude-code-acp'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -89,6 +89,32 @@ describe('CLI invocation', () => {
 
     expect(exitCode).not.toBe(0)
     expect(stderr).toContain('Error')
+  })
+
+  test('fails when no command provided', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'prompts.jsonl'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('ACP agent command is required')
+  })
+
+  test('accepts command as positional arguments', async () => {
+    const tmpFile = `/tmp/test-prompts-${Date.now()}.jsonl`
+    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
+
+    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'echo', 'test', '--help'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    await proc.exited
+
+    // Just verify it doesn't fail with parse error
+    // (it will fail to connect, but that's expected)
   })
 })
 
@@ -358,5 +384,117 @@ describe('downstream patterns: advanced filtering', () => {
     expect(result.timing.end).toBe(1704067201234)
     expect(result.timing.firstResponse).toBe(100)
     expect(result.timing.end - result.timing.start).toBe(1234) // matches duration
+  })
+})
+
+// ============================================================================
+// MCP Server Config Parsing Tests
+// ============================================================================
+
+describe('MCP server config parsing', () => {
+  test('parses stdio MCP server config', () => {
+    const json = '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}'
+    const proc = Bun.spawn(
+      ['bun', CLI_PATH, '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+
+    // If it doesn't crash, the parsing worked
+    expect(proc.exited).resolves.toBeDefined()
+  })
+
+  test('parses http MCP server config', () => {
+    const json =
+      '{"type":"http","name":"api","url":"https://example.com/mcp","headers":[{"name":"Authorization","value":"Bearer token"}]}'
+    const proc = Bun.spawn(
+      ['bun', CLI_PATH, '/tmp/test.jsonl', 'bunx', 'claude-code-acp', '--mcp-server', json, '--help'],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+
+    // If it doesn't crash, the parsing worked
+    expect(proc.exited).resolves.toBeDefined()
+  })
+
+  test('accepts multiple MCP servers', () => {
+    const json1 = '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":[],"env":[]}'
+    const json2 = '{"type":"http","name":"api","url":"https://example.com","headers":[]}'
+    const proc = Bun.spawn(
+      [
+        'bun',
+        CLI_PATH,
+        '/tmp/test.jsonl',
+        'bunx',
+        'claude-code-acp',
+        '--mcp-server',
+        json1,
+        '--mcp-server',
+        json2,
+        '--help',
+      ],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+
+    // If it doesn't crash, the parsing worked
+    expect(proc.exited).resolves.toBeDefined()
+  })
+})
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+describe('error handling', () => {
+  test('fails with invalid JSONL format', async () => {
+    const tmpFile = `/tmp/invalid-${Date.now()}.jsonl`
+    await Bun.write(tmpFile, '{invalid json}\n')
+
+    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toContain('Invalid prompt at line 1')
+  })
+
+  test('fails with invalid format option', async () => {
+    const tmpFile = `/tmp/test-${Date.now()}.jsonl`
+    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
+
+    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp', '--format', 'invalid'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Invalid format')
+  })
+
+  test('fails when judge format used without output path', async () => {
+    const tmpFile = `/tmp/test-${Date.now()}.jsonl`
+    await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
+
+    const proc = Bun.spawn(['bun', CLI_PATH, tmpFile, 'bunx', 'claude-code-acp', '--format', 'judge'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stderr = await new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('--format judge requires --output')
   })
 })

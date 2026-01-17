@@ -126,12 +126,6 @@ type IndexedStep = TrajectoryStep & { stepId: string }
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
-    command: {
-      type: 'string',
-    },
-    cmd: {
-      type: 'string',
-    },
     output: {
       type: 'string',
       short: 'o',
@@ -173,13 +167,13 @@ const { values, positionals } = parseArgs({
 if (values.help || positionals.length === 0) {
   // biome-ignore lint/suspicious/noConsole: CLI help output
   console.log(`
-Usage: acp-harness <prompts.jsonl> [options]
+Usage: acp-harness <prompts.jsonl> <command> [args...] [options]
 
 Arguments:
   prompts.jsonl     Input file with evaluation prompts
+  command [args]    ACP agent command to execute
 
 Options:
-  --cmd, --command  ACP agent command (default: "claude-code-acp")
   -o, --output      Output file (default: stdout)
   -c, --cwd         Working directory for agent
   -t, --timeout     Request timeout in ms (default: 60000)
@@ -199,21 +193,23 @@ Output Formats:
             2. Full trajectory JSONL for reference → <output>.full.jsonl
 
 Examples:
-  # Using the default claude-code-acp adapter
-  acp-harness prompts.jsonl -o results.jsonl
+  # Using an npm package
+  acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 
-  # Using bunx to run an adapter
-  acp-harness prompts.jsonl --cmd "bunx claude-code-acp" -o results.jsonl
-
-  # Using a local adapter script
-  acp-harness prompts.jsonl --cmd "bun ./my-adapter.ts" -o results.jsonl
+  # Using a local script
+  acp-harness prompts.jsonl bun ./my-adapter.ts -o results.jsonl
 
   # With judge format for LLM evaluation
-  acp-harness prompts.jsonl --cmd "bunx claude-code-acp" --format judge -o results
+  acp-harness prompts.jsonl bunx claude-code-acp --format judge -o results
+
+  # With MCP server
+  acp-harness prompts.jsonl bunx claude-code-acp \\
+    --mcp-server '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}' \\
+    -o results.jsonl
 
 Note: Requires an ACP-compatible agent. For Claude Code, install the adapter:
   npm install -g @zed-industries/claude-code-acp
-  ANTHROPIC_API_KEY=sk-... acp-harness prompts.jsonl -o results.jsonl
+  ANTHROPIC_API_KEY=sk-... acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
 `)
   process.exit(values.help ? 0 : 1)
 }
@@ -221,11 +217,6 @@ Note: Requires an ACP-compatible agent. For Claude Code, install the adapter:
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/** Parse command string into command array */
-const parseCommand = (cmd: string): string[] => {
-  return cmd.split(/\s+/).filter(Boolean)
-}
 
 /** Parse MCP server config from JSON string (SDK-compatible format) */
 const parseMcpServerConfig = (json: string): McpServerConfig => {
@@ -500,7 +491,13 @@ const main = async () => {
     process.exit(1)
   }
 
-  const agentCommand = parseCommand(values.cmd ?? values.command ?? 'claude-code-acp')
+  const agentCommand = positionals.slice(1)
+  if (agentCommand.length === 0) {
+    console.error('Error: ACP agent command is required')
+    console.error('Example: acp-harness prompts.jsonl bunx claude-code-acp')
+    process.exit(1)
+  }
+
   const outputPath = values.output
   const timeout = Number.parseInt(values.timeout ?? '60000', 10)
   const cwd = values.cwd
@@ -556,8 +553,11 @@ const main = async () => {
   // Clear output file(s) if not appending
   if (resolvedOutputPath && !appendOutput) {
     if (format === 'judge') {
-      await Bun.write(judgeMarkdownPath!, '')
-      await Bun.write(judgeFullPath!, '')
+      if (!judgeMarkdownPath || !judgeFullPath) {
+        throw new Error('Judge format paths not initialized')
+      }
+      await Bun.write(judgeMarkdownPath, '')
+      await Bun.write(judgeFullPath, '')
     } else {
       await Bun.write(resolvedOutputPath, '')
     }

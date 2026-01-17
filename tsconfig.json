@@ -1,5 +1,5 @@
 {
-  "include": ["src", "skills", "bin"],
+  "include": ["src", "bin"],
   "compilerOptions": {
     // Enable latest features
     "lib": ["ESNext"],
