@@ -1,0 +1,35 @@
+/**
+ * Harness commands for agent evaluation.
+ *
+ * @remarks
+ * Re-exports all harness command modules for programmatic use.
+ * For CLI usage, run `acp-harness <command> --help`.
+ *
+ * **Commands:**
+ * - `capture` - Core trajectory capture
+ * - `trials` - Multi-run pass@k/pass^k analysis
+ * - `summarize` - Derive compact views from results
+ * - `calibrate` - Sample failures for grader review
+ * - `validateRefs` - Check reference solutions
+ * - `balance` - Analyze test set coverage
+ * - `schemasCli` - Export JSON schemas
+ *
+ * @packageDocumentation
+ */
+
+export type { BalanceConfig } from './balance.ts'
+export { balance, runBalance } from './balance.ts'
+export type { CalibrateConfig } from './calibrate.ts'
+export { calibrate, runCalibrate } from './calibrate.ts'
+// Config types
+export type { CaptureConfig } from './capture.ts'
+// Command implementations (for programmatic use)
+export { capture, extractOutput, extractTrajectory, hasToolErrors, loadPrompts, runCapture } from './capture.ts'
+export type { SchemasConfig } from './schemas-cli.ts'
+export { runSchemas, schemasCli } from './schemas-cli.ts'
+export type { SummarizeConfig } from './summarize.ts'
+export { runSummarize, summarize } from './summarize.ts'
+export type { TrialsConfig } from './trials.ts'
+export { runTrials, trials } from './trials.ts'
+export type { ValidateRefsConfig } from './validate-refs.ts'
+export { runValidateRefs, validateRefs } from './validate-refs.ts'

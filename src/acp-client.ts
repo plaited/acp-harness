@@ -30,10 +30,11 @@ import type {
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { version } from '../package.json' with { type: 'json' }
-import { ACP_METHODS, ACP_PROTOCOL_VERSION, DEFAULT_ACP_CLIENT_NAME } from './acp.constants.ts'
-import { RequestPermissionRequestSchema, SessionNotificationSchema } from './acp.schemas.ts'
-import type { Session } from './acp.types.ts'
 import { createACPTransport } from './acp-transport.ts'
+import { ACP_METHODS, ACP_PROTOCOL_VERSION, DEFAULT_ACP_CLIENT_NAME, DEFAULT_POLLING_INTERVAL } from './constants.ts'
+import type { Session } from './schemas.ts'
+import { RequestPermissionRequestSchema, SessionNotificationSchema } from './schemas.ts'
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -120,7 +121,7 @@ export const createACPClient = (config: ACPClientConfig) => {
     clientInfo = { name: DEFAULT_ACP_CLIENT_NAME, version },
     capabilities = {},
     timeout = 30000,
-    pollingInterval = 50,
+    pollingInterval = DEFAULT_POLLING_INTERVAL,
     onPermissionRequest,
   } = config
 

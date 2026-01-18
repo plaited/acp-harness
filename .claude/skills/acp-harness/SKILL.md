@@ -1,6 +1,6 @@
 ---
 name: acp-harness
-description: Unified ACP client and evaluation harness. Connect to ACP-compatible agents programmatically, capture full trajectories (tools, thoughts, plans), and pipe to downstream analysis tools.
+description: CLI tool for capturing agent trajectories. Execute prompts against ACP-compatible agents, capture full trajectories (tools, thoughts, plans), and output structured JSONL for downstream scoring.
 compatibility: Bun >= 1.2.9
 ---
 
@@ -8,171 +8,344 @@ compatibility: Bun >= 1.2.9
 
 ## Purpose
 
-This skill provides a **unified toolkit for ACP client usage and agent evaluation**, optimized for TypeScript/JavaScript projects using Bun.
+CLI tool for capturing trajectories from ACP-compatible agents, optimized for TypeScript/JavaScript projects using Bun.
 
-1. **ACP Client API** - Headless programmatic access to ACP-compatible agents
-2. **Evaluation Harness** - Run prompts against agents and capture full trajectories
+**The harness captures. You score.**
+
+| Harness Provides | You Provide |
+|------------------|-------------|
+| Prompt execution against ACP agents | Scoring logic (Braintrust, custom scripts) |
+| Full trajectory capture (thoughts, tools, plans) | Pass/fail determination via graders |
+| Structured JSONL output | LLM-as-judge prompts |
+| Reproducible execution environment | CI integration, golden file comparison |
 
 **Use this when:**
-- Comparing skills across different agents (Claude Code, Cursor, OpenCode, Amp, Goose, Factory)
-- Evaluating built-in tools vs MCP servers vs skills for the same task
-- Generating training data with full trajectory capture
-- Running regression tests in CI/CD pipelines
-- Building multi-agent applications on a headless transport layer
+- Capturing trajectories for downstream evaluation
+- Generating training data (SFT/DPO) with full context
+- Building regression test fixtures for agent behavior
+- Comparing agent responses across configurations
 
-## Foundation Use Cases
+## Installation
 
-The harness is a **foundation layer** - it captures trajectories; scoring happens downstream.
+```bash
+# Run without installing (recommended for CI)
+bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+
+# Or install globally for repeated use
+bun add -g @plaited/acp-harness
+acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+
+# Or add as project dependency
+bun add @plaited/acp-harness
+```
+
+**Note:** Examples below use `acp-harness` (the command available after global install). Replace with `bunx @plaited/acp-harness` if not installed globally.
+
+## Core Principle: Capture Once, Derive Many Views
 
 ```mermaid
 flowchart LR
-    Harness["ACP Harness"] -->|"trajectories"| Scoring["Braintrust / Custom Script"]
-    Scoring -->|"scores"| Decision["Informed Choices"]
+    Prompts["prompts.jsonl"] --> Capture["capture/trials"]
+    Agent["ACP Agent"] --> Capture
+    Capture --> Results["results.jsonl (full trajectory)"]
+    Results --> Summarize["summarize"]
+    Results --> Calibrate["calibrate"]
+    Results --> Custom["(your tools)"]
+    Summarize --> Views["summary.jsonl / .md"]
+    Calibrate --> Report["calibration.md"]
+    Custom --> Pipeline["any scoring platform"]
 ```
 
-| Use Case | Harness Provides | You Build |
-|----------|------------------|-----------|
-| **Cross-agent skill eval** | Same prompts → multiple agents → trajectories | Scoring pipeline (Braintrust, custom) |
-| **Tool comparison** | Trajectory with tool/skill attribution | Diff analysis, preference data |
-| **Training data** | Structured I/O with tool calls, plans, thoughts | SFT/DPO formatting |
-| **Regression testing** | Deterministic prompt → trajectory capture | CI integration, golden file comparison |
-| **Multi-agent apps** | `createACPClient` transport layer | Session management, UI, agent switching |
+**Single output format:** Full trajectory JSONL (always)
+**No `--format` flag:** Derive views with separate commands
+**Schema exports:** Zod schemas + JSON Schema for any tooling
 
-### Agents Supporting Skills
+## Commands
 
-Skills can be installed across multiple agents, enabling cross-agent comparison:
+| Command | Input | Output | Purpose |
+|---------|-------|--------|---------|
+| `capture` | prompts.jsonl + agent | results.jsonl | Trajectory capture (full) |
+| `trials` | prompts.jsonl + agent | trials.jsonl | Multi-run + optional metrics |
+| `summarize` | results.jsonl | summary.jsonl or .md | Derive compact views |
+| `calibrate` | results.jsonl | calibration.md | Sample failures for review |
+| `validate-refs` | prompts.jsonl | validation.jsonl | Check reference solutions |
+| `balance` | prompts.jsonl | balance.json | Analyze test set coverage |
+| `schemas` | (none) | JSON Schema | Export schemas for non-TS users |
 
-| Agent | Skills Directory | Install Command |
-|-------|------------------|-----------------|
-| Claude Code | `.claude/skills/` | `./install.sh --agent claude` |
-| Cursor | `.claude/skills/` | `./install.sh --agent cursor` |
-| OpenCode | `.opencode/skill/` | `./install.sh --agent opencode` |
-| Amp | `.agents/skills/` | `./install.sh --agent amp` |
-| Goose | `.claude/skills/` | `./install.sh --agent goose` |
-| Factory | `.factory/skills/` | `./install.sh --agent factory` |
+All commands support optional `--grader ./grader.ts` for scoring.
 
-### Example: Comparing Built-in vs Skill
-
-```bash
-# Run same prompt with built-in tool
-bun scripts/run-harness.ts prompts.jsonl \
-  --agent claude-code-acp \
-  -o results-builtin.jsonl
-
-# Run same prompt with custom skill installed
-bun scripts/run-harness.ts prompts.jsonl \
-  --agent claude-code-acp \
-  --cwd /project/with/typescript-lsp-skill \
-  -o results-skill.jsonl
-
-# Compare trajectories - which used better tools? faster? more accurate?
-diff <(jq '.toolCalls' results-builtin.jsonl) <(jq '.toolCalls' results-skill.jsonl)
-```
-
-## Execution Environment
-
-**Recommendation:** Run evaluations in Docker containers for consistent, isolated execution.
-
-```bash
-# Build and run with Docker Compose
-docker compose -f docker-compose.acp.yml run --rm acp-harness
-
-# Or build directly
-docker build -f Dockerfile.acp -t acp-harness .
-docker run --rm -e ANTHROPIC_API_KEY acp-harness
-```
-
-Docker provides:
-- Consistent environment across local and CI
-- Filesystem isolation without app-level sandboxing
-- Reproducible results for training data generation
-
-See [assets/](assets/) for example container configurations:
-- `Dockerfile.acp` - Base container with Bun and git
-- `docker-compose.acp.yml` - Compose file with volume mounts for results
-
-## Non-Goals
-
-This harness is optimized for TypeScript/JavaScript projects using Bun. It is **not** designed for:
-
-- **Python projects** - Use [SWE-bench](https://github.com/SWE-bench/SWE-bench), [Braintrust Python SDK](https://www.braintrust.dev/)
-- **Academic model benchmarking** - Use [EleutherAI lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
-- **IDE integrations** - Use Copilot Evaluation Harness
-- **SaaS observability** - Use Braintrust, Langfuse platforms directly
-
-## Quick Reference
-
-| Resource | Description |
-|----------|-------------|
-| `scripts/run-harness.ts` | Execute prompts against agent, capture trajectories |
-| [client-api.md](references/client-api.md) | `createACPClient` configuration, helpers |
-| [output-formats.md](references/output-formats.md) | JSONL schemas, format options |
-| [downstream.md](references/downstream.md) | Integration patterns (Braintrust, jq, LLM-as-judge) |
-| [llm-judge-templates.md](references/llm-judge-templates.md) | Evaluation prompt templates |
-
-## Evaluation Workflow
-
-```mermaid
-flowchart LR
-    Prompts["prompts.jsonl"] --> Harness["run-harness.ts"]
-    Agent["ACP Agent"] --> Harness
-    Harness --> Summary["summary.jsonl"]
-    Harness --> Judge["results.md + results.full.jsonl"]
-    Summary --> JQ["jq analysis"]
-    Judge --> LLM["LLM-as-judge"]
-```
-
-1. **Prepare** - Create `prompts.jsonl` with evaluation cases
-2. **Execute** - Run harness against target agent
-3. **Capture** - Trajectories streamed to output files
-4. **Analyze** - Pipe to downstream tools for scoring
-
-## Harness Script
+## Capture Command
 
 ### Basic Usage
 
 ```bash
-bun scripts/run-harness.ts <prompts.jsonl> --agent <command> [options]
+acp-harness capture <prompts.jsonl> <command> [args...] [options]
 ```
 
 ### Arguments
 
-| Flag | Description | Default |
+| Argument/Flag | Description | Default |
 |------|-------------|---------|
-| `prompts.jsonl` | Input file with evaluation prompts | Required |
-| `-a, --agent` | ACP agent command | `"claude-code-acp"` |
+| `prompts.jsonl` | Input file with prompts to execute | Required |
+| `command [args]` | ACP agent command (e.g., `bunx claude-code-acp`) | Required |
 | `-o, --output` | Output file/path | stdout |
 | `-c, --cwd` | Working directory for agent | current |
 | `-t, --timeout` | Request timeout in ms | `60000` |
-| `-f, --format` | Output format: `summary`, `judge` | `summary` |
 | `--progress` | Show progress to stderr | false |
 | `--append` | Append to output file | false |
 | `--mcp-server` | MCP server config JSON (repeatable) | none |
+| `-g, --grader` | Path to grader module | none |
 
 ### Examples
 
 ```bash
-# Summary format (default) - minimal JSONL
-bun scripts/run-harness.ts prompts.jsonl -o results.jsonl
+# Basic capture
+acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
 
-# Judge format - creates two files for two-tier evaluation
-bun scripts/run-harness.ts prompts.jsonl --format judge -o results
-# Creates: results.md (summary with step IDs) + results.full.jsonl (complete trajectory)
+# Using a local adapter script
+acp-harness capture prompts.jsonl bun ./my-adapter.ts -o results.jsonl
 
-# With MCP server (stdio transport)
-bun scripts/run-harness.ts prompts.jsonl \
-  --mcp-server '{"type":"stdio","name":"fs","command":["mcp-filesystem","/data"]}'
+# With grader (adds score to each result)
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
 
-# With MCP server (HTTP transport)
-bun scripts/run-harness.ts prompts.jsonl \
-  --mcp-server '{"type":"http","name":"api","url":"http://localhost:3000"}'
-
-# Different agent (Droid ACP adapter)
-bun scripts/run-harness.ts prompts.jsonl --agent droid-acp -o results.jsonl
-
-# Stream with progress
-bun scripts/run-harness.ts prompts.jsonl --progress -o results.jsonl
+# With MCP server
+acp-harness capture prompts.jsonl bunx claude-code-acp \
+  --mcp-server '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}' \
+  -o results.jsonl
 ```
+
+## Trials Command
+
+Run each prompt multiple times for pass@k/pass^k analysis.
+
+```bash
+# Capture only (no grader)
+acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 -o trials.jsonl
+
+# With grader (computes pass@k, pass^k)
+acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+```
+
+### Output
+
+Without grader:
+```jsonl
+{"id":"search-001","input":"Find the CEO","k":5,"trials":[{"trialNum":1,"output":"...","trajectory":[...],"duration":1234},...]}
+```
+
+With grader:
+```jsonl
+{"id":"search-001","input":"Find the CEO","k":5,"passRate":0.8,"passAtK":0.99,"passExpK":0.33,"trials":[{"trialNum":1,"output":"...","pass":true,"score":1.0},...]}
+```
+
+## Summarize Command
+
+Derive compact views from full trajectory results.
+
+```bash
+# Summary JSONL (for jq analysis)
+acp-harness summarize results.jsonl -o summary.jsonl
+
+# Markdown (for LLM-as-judge)
+acp-harness summarize results.jsonl --markdown -o results.md
+```
+
+## Calibrate Command
+
+Sample failures for grader review. Calibration helps you distinguish between **agent failures** (agent did wrong thing) and **grader bugs** (agent was correct, grader too strict).
+
+```bash
+# Sample failures for human review
+acp-harness calibrate results.jsonl --sample 10 -o calibration.md
+
+# Re-score with different grader to compare
+acp-harness calibrate results.jsonl --grader ./loose-grader.ts --sample 10 -o comparison.md
+```
+
+See [eval-concepts.md](references/eval-concepts.md#grader-calibration) for why calibration matters.
+
+## Validate-Refs Command
+
+Check that reference solutions pass your grader before evaluating agents.
+
+```bash
+# Validate reference solutions
+acp-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
+
+# Check for failures
+cat validation.jsonl | jq 'select(.pass == false)'
+```
+
+### Why Use This?
+
+If your reference solution fails your own grader:
+- The task definition is ambiguous
+- The grader is too strict
+- The expected output is wrong
+
+**Fix the eval before evaluating the agent.**
+
+### Input Format
+
+Prompts must include a `reference` field:
+
+```jsonl
+{"id":"test-001","input":"Create a button component","expected":"<button>","reference":"export const Button = () => <button>Click</button>"}
+```
+
+### Output Format
+
+```jsonl
+{"id":"test-001","input":"Create a button component","reference":"export const Button = () => <button>Click</button>","pass":true,"score":1.0,"reasoning":"Contains expected element"}
+```
+
+## Balance Command
+
+Analyze test set coverage to ensure balanced evaluation.
+
+```bash
+# Analyze prompt distribution
+acp-harness balance prompts.jsonl -o balance.json
+
+# Pretty print
+acp-harness balance prompts.jsonl | jq .
+```
+
+### Why Use This?
+
+An eval with only "make X work" misses "don't break Y". Balance analysis shows:
+
+- **Category distribution** (from `metadata.category`)
+- **Positive/negative case ratio**
+- **Coverage gaps**
+
+### Output Format
+
+```json
+{
+  "total": 50,
+  "categories": {
+    "ui": 20,
+    "logic": 15,
+    "api": 10,
+    "edge-case": 5
+  },
+  "hasExpected": 45,
+  "hasReference": 30,
+  "hasMetadata": 50
+}
+```
+
+### Balanced Eval Design
+
+Include both positive and negative cases:
+
+| Type | Example | Purpose |
+|------|---------|---------|
+| Positive | "Add a login button" | Agent should succeed |
+| Negative | "Add a button without breaking tests" | Agent should not break things |
+| Edge case | "Handle empty input gracefully" | Agent should be robust |
+
+See [eval-concepts.md](references/eval-concepts.md#test-set-balance) for more on balanced test sets.
+
+## Schemas Command
+
+Export JSON schemas for non-TypeScript tools.
+
+```bash
+# List available schemas
+acp-harness schemas
+
+# Export all schemas as JSON
+acp-harness schemas --json -o schemas.json
+
+# Export specific schema
+acp-harness schemas CaptureResult --json
+acp-harness schemas TrialResult --json
+acp-harness schemas GraderResult --json
+```
+
+### Available Schemas
+
+| Schema | Description |
+|--------|-------------|
+| `CaptureResult` | Single capture output (id, input, output, trajectory, timing) |
+| `TrialResult` | Multi-run trial output (includes passAtK, passExpK) |
+| `GraderResult` | Grader return value (pass, score, reasoning) |
+| `PromptInput` | Input prompt format |
+| `TrajectoryStep` | Single step in trajectory array |
+| `SummaryResult` | Compact summary format |
+
+### Usage in Other Languages
+
+Export schemas for validation in Python, Go, etc.:
+
+```bash
+# Export all schemas
+acp-harness schemas --json -o schemas.json
+
+# Use in Python with jsonschema
+python -c "
+import json
+from jsonschema import validate
+
+with open('schemas.json') as f:
+    schemas = json.load(f)
+
+with open('results.jsonl') as f:
+    for line in f:
+        result = json.loads(line)
+        validate(result, schemas['CaptureResult'])
+        print(f'{result[\"id\"]}: valid')
+"
+```
+
+## Grader Interface
+
+Graders provide semantic pass/fail scoring for captured trajectories. The harness supports graders written in **any language**.
+
+### TypeScript Grader
+
+```typescript
+// my-grader.ts
+import type { Grader } from '@plaited/acp-harness/schemas'
+
+export const grade: Grader = async ({ input, output, expected, trajectory }) => {
+  const pass = output.toLowerCase().includes(expected?.toLowerCase() ?? '')
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reasoning: pass ? 'Contains expected answer' : 'Missing expected answer'
+  }
+}
+```
+
+### Python/Executable Graders
+
+Any executable can be a grader using stdin/stdout JSON protocol:
+
+```python
+#!/usr/bin/env python3
+import json, sys
+
+data = json.load(sys.stdin)
+output = data.get("output", "").lower()
+expected = (data.get("expected") or "").lower()
+
+pass_result = expected in output if expected else True
+print(json.dumps({
+    "pass": pass_result,
+    "score": 1.0 if pass_result else 0.0,
+    "reasoning": "Contains expected" if pass_result else "Missing expected"
+}))
+```
+
+```bash
+chmod +x ./grader.py
+acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+```
+
+See [graders.md](references/graders.md) for complete polyglot grader documentation including shell scripts and LLM-as-judge patterns.
 
 ## Input Format
 
@@ -188,101 +361,63 @@ Each line in `prompts.jsonl`:
 | `id` | Yes | Unique identifier |
 | `input` | Yes | Prompt text for the agent |
 | `expected` | No | Expected output (for downstream scoring) |
+| `reference` | No | Reference solution (for validate-refs) |
 | `metadata` | No | Tags, category, difficulty for filtering |
 | `timeout` | No | Override default timeout for this prompt |
 
-## Output Formats
+## Output Format
 
-### Summary Format (default)
-
-Minimal JSONL for quick metrics and analysis:
+Full trajectory JSONL (always):
 
 ```jsonl
-{"id":"test-001","input":"Create a button","output":"I created...","toolCalls":["Write"],"status":"passed","duration":1234}
+{
+  "id": "test-001",
+  "input": "Find the CEO of Anthropic",
+  "output": "The CEO of Anthropic is Dario Amodei.",
+  "trajectory": [
+    {"type": "thought", "content": "I'll search for this...", "timestamp": 100, "stepId": "test-001-step-1"},
+    {"type": "tool_call", "name": "WebSearch", "status": "completed", "input": {...}, "output": {...}, "duration": 500, "stepId": "test-001-step-2"},
+    {"type": "message", "content": "The CEO of Anthropic is Dario Amodei.", "timestamp": 700, "stepId": "test-001-step-3"}
+  ],
+  "metadata": {"category": "search", "agent": "claude-code-acp"},
+  "timing": {"start": 1704067200000, "end": 1704067201234, "firstResponse": 100},
+  "toolErrors": false
+}
 ```
 
-### Judge Format (two-tier)
+**Note:** `toolErrors` replaces misleading `status: 'passed'|'failed'`. Real pass/fail comes from YOUR grader.
 
-Creates two files for LLM-as-judge evaluation:
+## Schema Exports
 
-**`<output>.md`** - Markdown summary with step IDs and code previews:
-
-```markdown
-## Evaluation Record: test-001
-
-**Input:** Create a primary button
-
-**Trajectory:**
-1. [THOUGHT] I'll create a styled button... [->test-001-step-1]
-2. [TOOL:Write] -> completed (234ms) [->test-001-step-2]
-   File: src/button.tsx (847 chars)
-   ```tsx
-   import { createStyles } from '@plaited/acp'
-
-   type ButtonProps = {
-     label: string
-
-   // ... 30 lines omitted ...
-
-   export const Button = ({ label }: ButtonProps) => (
-     <button {...styles.btn}>{label}</button>
-   )
-   ```
-3. [MESSAGE] I created the button... [->test-001-step-3]
-
-**Output:** I created the button with primary styling.
-**Metadata:** category=ui, agent=claude-code-acp
-**Status:** passed
-**Duration:** 1234ms
-
----
-```
-
-**`<output>.full.jsonl`** - Complete trajectory with step IDs for correlation:
-
-```jsonl
-{"id":"test-001","input":"...","output":"...","trajectory":[{"type":"thought","content":"...","timestamp":100,"stepId":"test-001-step-1"},{"type":"tool_call","name":"Write","status":"completed","input":{...},"output":{...},"duration":234,"stepId":"test-001-step-2"}],...}
-```
-
-**Usage patterns by judge context window:**
-
-| Judge Model | Strategy |
-|-------------|----------|
-| Gemini (1M+ tokens) | Feed `results.full.jsonl` directly |
-| Claude/GPT-4 (128-200k) | Use `results.full.jsonl` for most runs |
-| Smaller models | Use `results.md`, retrieve specific steps by ID as needed |
-
-## Programmatic Usage
+Consumers can import Zod schemas directly:
 
 ```typescript
-import { createACPClient, createPrompt, summarizeResponse } from '@plaited/acp'
+import { CaptureResultSchema, TrialResultSchema } from '@plaited/acp-harness/schemas'
 
-// Requires: npm install -g @zed-industries/claude-code-acp
-const client = createACPClient({
-  command: ['claude-code-acp'],
-  cwd: '/path/to/project',
-})
+// Validate external data
+const result = CaptureResultSchema.parse(jsonData)
 
-await client.connect()
-const session = await client.createSession()
-
-const { updates } = await client.promptSync(
-  session.id,
-  createPrompt('Create a button with hover state')
-)
-
-// Full trajectory is in updates
-const summary = summarizeResponse(updates)
-console.log({
-  text: summary.text,
-  toolCalls: summary.completedToolCalls,
-  hasErrors: summary.hasErrors
-})
-
-await client.disconnect()
+// Generate JSON Schema (Zod 4 native)
+import { z } from 'zod'
+const jsonSchema = z.toJSONSchema(CaptureResultSchema)
 ```
 
-See [client-api.md](references/client-api.md) for complete API documentation.
+Or export JSON schemas for non-TypeScript tools:
+
+```bash
+acp-harness schemas --json -o schemas.json
+acp-harness schemas CaptureResult --json
+```
+
+## Execution Environment
+
+**Recommendation:** Run the harness in Docker containers for consistent, isolated execution.
+
+```bash
+docker compose -f docker-compose.acp.yml run --rm acp-harness
+```
+
+See [assets/](assets/) for example container configurations.
 
 ## Downstream Integration
 
@@ -293,38 +428,25 @@ The harness outputs standard JSONL that pipes to any tool:
 cat results.jsonl | jq 'select(.metadata.category == "ui")'
 
 # Count tool usage
-cat results.jsonl | jq -s 'map(.toolCalls | length) | add'
+cat results.jsonl | jq -s 'map(.trajectory | map(select(.type == "tool_call")) | length) | add'
 
-# Feed full trajectory to Gemini (large context)
-cat results.full.jsonl | your-gemini-judge.ts
+# Summarize for quick analysis
+acp-harness summarize results.jsonl -o summary.jsonl
 ```
 
 See [downstream.md](references/downstream.md) for integration patterns with Braintrust, Gemini, and custom scorers.
 
-## Evaluation Targets
+## Quick Reference
 
-| Target | How to Evaluate |
-|--------|-----------------|
-| **Agent capability** | Direct prompts, analyze trajectory quality |
-| **Skills** | Set `--cwd` to project with skill, test skill-specific prompts |
-| **MCP Servers** | Use `--mcp-server` flag, verify tool usage in trajectory |
-
-### Skill Evaluation
-
-```bash
-bun scripts/run-harness.ts skill-prompts.jsonl \
-  --cwd /project/with/skill \
-  -o results.jsonl
-```
-
-### MCP Server Evaluation
-
-```bash
-bun scripts/run-harness.ts mcp-prompts.jsonl \
-  --mcp-server '{"type":"stdio","name":"fs","command":["mcp-filesystem"]}' \
-  -o results.jsonl
-```
+| Resource | Description |
+|----------|-------------|
+| `bunx @plaited/acp-harness` | CLI help |
+| [output-formats.md](references/output-formats.md) | JSONL schemas, command details |
+| [downstream.md](references/downstream.md) | Integration patterns (Braintrust, jq, custom scorers) |
+| [graders.md](references/graders.md) | Polyglot grader documentation (TypeScript, Python, shell) |
+| [eval-concepts.md](references/eval-concepts.md) | Evaluation concepts (pass@k, pass^k, calibration) |
 
 ## Related
 
-- **@plaited/acp** - Core ACP client module
+- **[@agentclientprotocol/sdk](https://www.npmjs.com/package/@agentclientprotocol/sdk)** - ACP SDK for programmatic access
+- **[@zed-industries/claude-code-acp](https://www.npmjs.com/package/@zed-industries/claude-code-acp)** - Claude Code ACP adapter

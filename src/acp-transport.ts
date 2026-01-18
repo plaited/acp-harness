@@ -10,7 +10,7 @@
  * newline-delimited JSON messages with Zod runtime validation.
  */
 
-import { JSON_RPC_ERRORS } from './acp.constants.ts'
+import { JSON_RPC_ERRORS } from './constants.ts'
 import type {
   JsonRpcError,
   JsonRpcErrorResponse,
@@ -19,8 +19,8 @@ import type {
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcSuccessResponse,
-} from './acp.schemas.ts'
-import { JsonRpcMessageSchema } from './acp.schemas.ts'
+} from './schemas.ts'
+import { JsonRpcMessageSchema } from './schemas.ts'
 
 // ============================================================================
 // Types
@@ -71,7 +71,7 @@ type PipedSubprocess = {
 }
 
 /** Custom error for ACP transport failures */
-class ACPTransportError extends Error {
+export class ACPTransportError extends Error {
   constructor(
     message: string,
     public readonly code?: number,
@@ -116,8 +116,9 @@ export const createACPTransport = (config: ACPTransportConfig) => {
   let isClosing = false
 
   // Stream readers for explicit cleanup
-  let stdoutReader: ReadableStreamDefaultReader<Uint8Array> | undefined
-  let stderrReader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  // Use global ReadableStreamDefaultReader type (Bun's type includes readMany)
+  let stdoutReader: globalThis.ReadableStreamDefaultReader<Uint8Array> | undefined
+  let stderrReader: globalThis.ReadableStreamDefaultReader<Uint8Array> | undefined
 
   // --------------------------------------------------------------------------
   // Message Parsing (with Zod validation)
@@ -274,12 +275,18 @@ export const createACPTransport = (config: ACPTransportConfig) => {
 
     // Read stdout for JSON-RPC messages
     const readStdout = async () => {
-      stdoutReader = subprocess!.stdout.getReader()
+      if (!subprocess) {
+        throw new ACPTransportError('Subprocess not started')
+      }
+      // Type assertion needed: Bun's ReadableStreamDefaultReader includes readMany
+      // but node:stream/web reader returned by getReader() doesn't have it
+      const reader = subprocess.stdout.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
+      stdoutReader = reader
       const decoder = new TextDecoder()
 
       try {
         while (true) {
-          const { done, value } = await stdoutReader.read()
+          const { done, value } = await reader.read()
           if (done) break
 
           const text = decoder.decode(value, { stream: true })
@@ -299,12 +306,18 @@ export const createACPTransport = (config: ACPTransportConfig) => {
 
     // Read stderr for debugging
     const readStderr = async () => {
-      stderrReader = subprocess!.stderr.getReader()
+      if (!subprocess) {
+        throw new ACPTransportError('Subprocess not started')
+      }
+      // Type assertion needed: Bun's ReadableStreamDefaultReader includes readMany
+      // but node:stream/web reader returned by getReader() doesn't have it
+      const reader = subprocess.stderr.getReader() as globalThis.ReadableStreamDefaultReader<Uint8Array>
+      stderrReader = reader
       const decoder = new TextDecoder()
 
       try {
         while (true) {
-          const { done, value } = await stderrReader.read()
+          const { done, value } = await reader.read()
           if (done) break
           // Log stderr for debugging but don't treat as error
           const text = decoder.decode(value, { stream: true })
@@ -319,7 +332,8 @@ export const createACPTransport = (config: ACPTransportConfig) => {
       }
     }
 
-    // Start reading streams
+    // Start reading streams (fire-and-forget pattern)
+    // These run concurrently and clean up via optional chaining in close()
     readStdout()
     readStderr()
 

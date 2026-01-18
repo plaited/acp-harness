@@ -1,0 +1,567 @@
+/**
+ * Unified Zod schemas and types for the ACP harness.
+ *
+ * @remarks
+ * This module follows a schema-first approach where Zod schemas are the
+ * single source of truth. TypeScript types are derived using `z.infer<>`.
+ *
+ * **Exports:**
+ * - Harness schemas: PromptCaseSchema, GraderResultSchema, CaptureResultSchema, etc.
+ * - JSON-RPC schemas: JsonRpcRequestSchema, JsonRpcResponseSchema, etc.
+ * - ACP SDK type schemas: SessionNotificationSchema, RequestPermissionRequestSchema
+ * - All inferred types via `z.infer<>`
+ *
+ * **JSON Schema generation (Zod 4):**
+ * ```typescript
+ * import { z } from 'zod'
+ * import { CaptureResultSchema } from '@plaited/acp-harness/schemas'
+ * const jsonSchema = z.toJSONSchema(CaptureResultSchema)
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+import type { RequestPermissionRequest, SessionId, SessionNotification } from '@agentclientprotocol/sdk'
+import { z } from 'zod'
+
+// ============================================================================
+// Internal Type Utilities
+// ============================================================================
+
+/** Precise type detection beyond typeof operator */
+const trueTypeOf = (obj?: unknown): string => Object.prototype.toString.call(obj).slice(8, -1).toLowerCase()
+
+/** Type guard for precise type checking with TypeScript narrowing */
+const isTypeOf = <T>(obj: unknown, type: string): obj is T => trueTypeOf(obj) === type
+
+/** Type guard for object shape validation */
+const isRecord = (val: unknown): val is Record<string, unknown> => isTypeOf<Record<string, unknown>>(val, 'object')
+
+// ============================================================================
+// Session Types
+// ============================================================================
+
+/**
+ * Session schema for session creation responses.
+ */
+export const SessionSchema = z.object({
+  id: z.string() as z.ZodType<SessionId>,
+  _meta: z.record(z.string(), z.unknown()).nullish(),
+})
+
+/** Session object returned from session creation */
+export type Session = z.infer<typeof SessionSchema>
+
+// ============================================================================
+// JSON-RPC 2.0 Schemas
+// ============================================================================
+
+/** JSON-RPC version literal */
+const JsonRpcVersionSchema = z.literal('2.0')
+
+/** Request/response identifier */
+const RequestIdSchema = z.union([z.string(), z.number()])
+
+/**
+ * JSON-RPC 2.0 error object schema.
+ *
+ * @remarks
+ * Standard error codes:
+ * - `-32700`: Parse error
+ * - `-32600`: Invalid request
+ * - `-32601`: Method not found
+ * - `-32602`: Invalid params
+ * - `-32603`: Internal error
+ * - `-32800`: Request cancelled (ACP extension)
+ */
+export const JsonRpcErrorSchema = z.object({
+  code: z.number(),
+  message: z.string(),
+  data: z.unknown().optional(),
+})
+
+/** JSON-RPC 2.0 error object */
+export type JsonRpcError = z.infer<typeof JsonRpcErrorSchema>
+
+/** JSON-RPC 2.0 request schema */
+export const JsonRpcRequestSchema = z.object({
+  jsonrpc: JsonRpcVersionSchema,
+  id: RequestIdSchema,
+  method: z.string(),
+  params: z.unknown().optional(),
+})
+
+/** JSON-RPC 2.0 request structure */
+export type JsonRpcRequest<T = unknown> = Omit<z.infer<typeof JsonRpcRequestSchema>, 'params'> & {
+  params?: T
+}
+
+/** JSON-RPC 2.0 notification schema (no id, no response expected) */
+export const JsonRpcNotificationSchema = z.object({
+  jsonrpc: JsonRpcVersionSchema,
+  method: z.string(),
+  params: z.unknown().optional(),
+})
+
+/** JSON-RPC 2.0 notification structure (no id, no response expected) */
+export type JsonRpcNotification<T = unknown> = Omit<z.infer<typeof JsonRpcNotificationSchema>, 'params'> & {
+  params?: T
+}
+
+/** JSON-RPC 2.0 success response schema */
+export const JsonRpcSuccessResponseSchema = z.object({
+  jsonrpc: JsonRpcVersionSchema,
+  id: RequestIdSchema,
+  result: z.unknown(),
+})
+
+/** JSON-RPC 2.0 success response */
+export type JsonRpcSuccessResponse<T = unknown> = Omit<z.infer<typeof JsonRpcSuccessResponseSchema>, 'result'> & {
+  result: T
+}
+
+/** JSON-RPC 2.0 error response schema */
+export const JsonRpcErrorResponseSchema = z.object({
+  jsonrpc: JsonRpcVersionSchema,
+  id: z.union([RequestIdSchema, z.null()]),
+  error: JsonRpcErrorSchema,
+})
+
+/** JSON-RPC 2.0 error response */
+export type JsonRpcErrorResponse = z.infer<typeof JsonRpcErrorResponseSchema>
+
+/** Union of all JSON-RPC response types */
+export const JsonRpcResponseSchema = z.union([JsonRpcSuccessResponseSchema, JsonRpcErrorResponseSchema])
+
+/** Union of all JSON-RPC response types */
+export type JsonRpcResponse<T = unknown> = JsonRpcSuccessResponse<T> | JsonRpcErrorResponse
+
+/**
+ * Union of all JSON-RPC message types.
+ *
+ * @remarks
+ * Use `safeParse` at transport boundaries for runtime validation.
+ */
+export const JsonRpcMessageSchema = z.union([JsonRpcRequestSchema, JsonRpcNotificationSchema, JsonRpcResponseSchema])
+
+/** Union of all JSON-RPC message types */
+export type JsonRpcMessage<T = unknown> = JsonRpcRequest<T> | JsonRpcNotification<T> | JsonRpcResponse<T>
+
+// ============================================================================
+// ACP SDK Type Schemas (Custom Validators)
+// ============================================================================
+
+/**
+ * Schema for session update notifications.
+ *
+ * @remarks
+ * Validates `sessionId` and `update` fields used in notification handling.
+ * Uses z.custom() to validate SDK types at runtime while keeping SDK types
+ * as the source of truth.
+ */
+export const SessionNotificationSchema = z.custom<SessionNotification>(
+  (val): val is SessionNotification =>
+    isRecord(val) && 'sessionId' in val && typeof val.sessionId === 'string' && 'update' in val && isRecord(val.update),
+)
+
+/**
+ * Schema for permission requests from agent.
+ *
+ * @remarks
+ * Validates `options` array used in permission handling.
+ */
+export const RequestPermissionRequestSchema = z.custom<RequestPermissionRequest>(
+  (val): val is RequestPermissionRequest => isRecord(val) && 'options' in val && Array.isArray(val.options),
+)
+
+// ============================================================================
+// MCP Server Configuration Schemas
+// ============================================================================
+
+/** Environment variable configuration */
+export const EnvVariableSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+})
+
+/** HTTP header configuration */
+export const HttpHeaderSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+})
+
+/** MCP server stdio transport configuration */
+export const McpServerStdioSchema = z.object({
+  type: z.literal('stdio').optional(),
+  name: z.string(),
+  command: z.string(),
+  args: z.array(z.string()),
+  env: z.array(EnvVariableSchema),
+})
+
+/** MCP server HTTP transport configuration */
+export const McpServerHttpSchema = z.object({
+  type: z.literal('http'),
+  name: z.string(),
+  url: z.string(),
+  headers: z.array(HttpHeaderSchema),
+})
+
+/** MCP server configuration (stdio or HTTP) */
+export const McpServerSchema = z.union([McpServerStdioSchema, McpServerHttpSchema])
+
+/** MCP server configuration type */
+export type McpServerConfig = z.infer<typeof McpServerSchema>
+
+// ============================================================================
+// Harness Input Schemas
+// ============================================================================
+
+/**
+ * Prompt case schema for evaluation inputs.
+ *
+ * @remarks
+ * Each line in a prompts.jsonl file should match this schema.
+ */
+export const PromptCaseSchema = z.object({
+  /** Unique identifier for the test case */
+  id: z.string(),
+  /** The prompt text to send to the agent */
+  input: z.string(),
+  /** Optional expected output for grading */
+  expected: z.string().optional(),
+  /** Optional reference solution for validation */
+  reference: z.string().optional(),
+  /** Optional metadata for categorization and analysis */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Optional per-case timeout override in milliseconds */
+  timeout: z.number().optional(),
+})
+
+/** Prompt case type */
+export type PromptCase = z.infer<typeof PromptCaseSchema>
+
+// ============================================================================
+// Grader Schemas
+// ============================================================================
+
+/**
+ * Grader result schema.
+ *
+ * @remarks
+ * Result returned by user-provided grader functions.
+ */
+export const GraderResultSchema = z.object({
+  /** Whether the output passes the evaluation criteria */
+  pass: z.boolean(),
+  /** Numeric score from 0.0 to 1.0 */
+  score: z.number().min(0).max(1),
+  /** Optional explanation for the score */
+  reasoning: z.string().optional(),
+})
+
+/** Grader result type */
+export type GraderResult = z.infer<typeof GraderResultSchema>
+
+/**
+ * Grader function type.
+ *
+ * @remarks
+ * User-provided graders implement this interface to score agent outputs.
+ *
+ * @example
+ * ```typescript
+ * import type { Grader } from '@plaited/acp-harness/schemas'
+ *
+ * export const grade: Grader = async ({ input, output, expected, trajectory }) => {
+ *   const pass = output.toLowerCase().includes(expected?.toLowerCase() ?? '')
+ *   return {
+ *     pass,
+ *     score: pass ? 1 : 0,
+ *     reasoning: pass ? 'Contains expected answer' : 'Missing expected answer'
+ *   }
+ * }
+ * ```
+ */
+export type Grader = (params: {
+  input: string
+  output: string
+  expected?: string
+  trajectory?: TrajectoryStep[]
+}) => Promise<GraderResult>
+
+// ============================================================================
+// Trajectory Schemas
+// ============================================================================
+
+/** Tool input schema for extracting file paths and content */
+export const ToolInputSchema = z
+  .object({
+    file_path: z.string().optional(),
+    path: z.string().optional(),
+    content: z.string().optional(),
+    new_string: z.string().optional(),
+  })
+  .passthrough()
+
+/** Tool input type */
+export type ToolInput = z.infer<typeof ToolInputSchema>
+
+/** Thought trajectory step */
+export const ThoughtStepSchema = z.object({
+  type: z.literal('thought'),
+  content: z.string(),
+  timestamp: z.number(),
+  stepId: z.string().optional(),
+})
+
+/** Message trajectory step */
+export const MessageStepSchema = z.object({
+  type: z.literal('message'),
+  content: z.string(),
+  timestamp: z.number(),
+  stepId: z.string().optional(),
+})
+
+/** Tool call trajectory step */
+export const ToolCallStepSchema = z.object({
+  type: z.literal('tool_call'),
+  name: z.string(),
+  status: z.string(),
+  input: z.unknown().optional(),
+  output: z.unknown().optional(),
+  duration: z.number().optional(),
+  timestamp: z.number(),
+  stepId: z.string().optional(),
+})
+
+/** Plan trajectory step */
+export const PlanStepSchema = z.object({
+  type: z.literal('plan'),
+  entries: z.array(z.unknown()),
+  timestamp: z.number(),
+  stepId: z.string().optional(),
+})
+
+/**
+ * Trajectory step schema (discriminated union).
+ *
+ * @remarks
+ * Represents a single step in the agent's execution trajectory.
+ */
+export const TrajectoryStepSchema = z.discriminatedUnion('type', [
+  ThoughtStepSchema,
+  MessageStepSchema,
+  ToolCallStepSchema,
+  PlanStepSchema,
+])
+
+/** Trajectory step type */
+export type TrajectoryStep = z.infer<typeof TrajectoryStepSchema>
+
+/** Indexed trajectory step with unique ID for correlation */
+export type IndexedStep = TrajectoryStep & { stepId: string }
+
+// ============================================================================
+// Capture Result Schemas
+// ============================================================================
+
+/** Timing information for a capture result */
+export const TimingSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+  firstResponse: z.number().optional(),
+})
+
+/** Timing information type */
+export type Timing = z.infer<typeof TimingSchema>
+
+/**
+ * Capture result schema.
+ *
+ * @remarks
+ * Full trajectory output from the `capture` command.
+ * The `toolErrors` field replaces the misleading `status: 'passed'|'failed'`.
+ * Real pass/fail determination comes from your grader.
+ */
+export const CaptureResultSchema = z.object({
+  /** Test case identifier */
+  id: z.string(),
+  /** Original prompt input */
+  input: z.string(),
+  /** Final agent output */
+  output: z.string(),
+  /** Expected output (if provided) */
+  expected: z.string().optional(),
+  /** Full execution trajectory */
+  trajectory: z.array(TrajectoryStepSchema),
+  /** Metadata including category, agent info, etc. */
+  metadata: z.record(z.string(), z.unknown()),
+  /** Timing information */
+  timing: TimingSchema,
+  /** Whether any tool calls failed */
+  toolErrors: z.boolean(),
+  /** Error messages (if any) */
+  errors: z.array(z.string()).optional(),
+  /** Grader score (if grader was provided) */
+  score: GraderResultSchema.optional(),
+})
+
+/** Capture result type */
+export type CaptureResult = z.infer<typeof CaptureResultSchema>
+
+// ============================================================================
+// Summary Result Schemas
+// ============================================================================
+
+/**
+ * Summary result schema.
+ *
+ * @remarks
+ * Compact view derived from full capture results via the `summarize` command.
+ */
+export const SummaryResultSchema = z.object({
+  /** Test case identifier */
+  id: z.string(),
+  /** Original prompt input */
+  input: z.string(),
+  /** Final agent output */
+  output: z.string(),
+  /** List of tool names called */
+  toolCalls: z.array(z.string()),
+  /** Duration in milliseconds */
+  duration: z.number(),
+})
+
+/** Summary result type */
+export type SummaryResult = z.infer<typeof SummaryResultSchema>
+
+// ============================================================================
+// Trial Result Schemas
+// ============================================================================
+
+/** Single trial within a trial run */
+export const TrialEntrySchema = z.object({
+  /** Trial number (1-indexed) */
+  trialNum: z.number(),
+  /** Agent output for this trial */
+  output: z.string(),
+  /** Full trajectory for this trial */
+  trajectory: z.array(TrajectoryStepSchema),
+  /** Duration in milliseconds */
+  duration: z.number(),
+  /** Pass/fail (if grader provided) */
+  pass: z.boolean().optional(),
+  /** Numeric score (if grader provided) */
+  score: z.number().optional(),
+  /** Grader reasoning (if grader provided) */
+  reasoning: z.string().optional(),
+})
+
+/** Trial entry type */
+export type TrialEntry = z.infer<typeof TrialEntrySchema>
+
+/**
+ * Trial result schema.
+ *
+ * @remarks
+ * Output from the `trials` command for pass@k/pass^k analysis.
+ * Metrics (passRate, passAtK, passExpK) are only present when a grader is provided.
+ */
+export const TrialResultSchema = z.object({
+  /** Test case identifier */
+  id: z.string(),
+  /** Original prompt input */
+  input: z.string(),
+  /** Expected output (if provided) */
+  expected: z.string().optional(),
+  /** Number of trials (k) */
+  k: z.number(),
+  /** Simple pass rate: passes / k (with grader only) */
+  passRate: z.number().optional(),
+  /** pass@k: probability of at least one pass in k samples (with grader only) */
+  passAtK: z.number().optional(),
+  /** pass^k: probability of all k samples passing (with grader only) */
+  passExpK: z.number().optional(),
+  /** Individual trial results */
+  trials: z.array(TrialEntrySchema),
+})
+
+/** Trial result type */
+export type TrialResult = z.infer<typeof TrialResultSchema>
+
+// ============================================================================
+// Calibration Schemas
+// ============================================================================
+
+/** Calibration sample for grader review */
+export const CalibrationSampleSchema = z.object({
+  /** Test case identifier */
+  id: z.string(),
+  /** Original prompt input */
+  input: z.string(),
+  /** Agent output */
+  output: z.string(),
+  /** Expected output (if provided) */
+  expected: z.string().optional(),
+  /** Original grader score */
+  originalScore: GraderResultSchema,
+  /** Re-scored result (if different grader provided) */
+  rescoredResult: GraderResultSchema.optional(),
+  /** Key trajectory snippets */
+  trajectorySnippet: z.array(TrajectoryStepSchema),
+})
+
+/** Calibration sample type */
+export type CalibrationSample = z.infer<typeof CalibrationSampleSchema>
+
+// ============================================================================
+// Balance Analysis Schemas
+// ============================================================================
+
+/** Category distribution in test set */
+export const CategoryDistributionSchema = z.object({
+  /** Category name */
+  name: z.string(),
+  /** Number of test cases */
+  count: z.number(),
+  /** Percentage of total */
+  percentage: z.number(),
+})
+
+/** Category distribution type */
+export type CategoryDistribution = z.infer<typeof CategoryDistributionSchema>
+
+/** Balance analysis result */
+export const BalanceAnalysisSchema = z.object({
+  /** Total number of test cases */
+  totalCases: z.number(),
+  /** Distribution by category */
+  categories: z.array(CategoryDistributionSchema),
+  /** Categories that may need more test cases */
+  underrepresented: z.array(z.string()),
+  /** Suggested improvements */
+  suggestions: z.array(z.string()),
+})
+
+/** Balance analysis type */
+export type BalanceAnalysis = z.infer<typeof BalanceAnalysisSchema>
+
+// ============================================================================
+// Validation Reference Schemas
+// ============================================================================
+
+/** Validation result for a reference solution */
+export const ValidationResultSchema = z.object({
+  /** Test case identifier */
+  id: z.string(),
+  /** Reference solution provided */
+  reference: z.string(),
+  /** Whether reference passes the grader */
+  passes: z.boolean(),
+  /** Grader result */
+  graderResult: GraderResultSchema,
+})
+
+/** Validation result type */
+export type ValidationResult = z.infer<typeof ValidationResultSchema>
