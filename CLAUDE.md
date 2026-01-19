@@ -41,7 +41,7 @@ This project uses `.claude/rules/` for project-specific guidance:
 
 **CLI usage:**
 ```bash
-bunx @plaited/acp-harness prompts.jsonl bunx claude-code-acp -o results.jsonl
+bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
 ```
 
 ### Code Style Essentials
@@ -80,13 +80,42 @@ When working on plugins:
 2. **Bun Required**: Development requires bun >= v1.2.9
 3. **ES2024 Features**: Uses Promise.withResolvers() and other modern APIs
 
-## Plugin
+## Skills
 
-The bundled **acp-harness** skill (`.claude/skills/acp-harness/`) provides:
-- CLI usage and examples
-- Output format specifications
-- Downstream integration patterns
+This project provides two AI agent skills in `.claude/skills/`:
 
-Install via Claude Code: `/plugin marketplace add plaited/acp-harness`
+### ACP Harness (`acp-harness`)
+
+CLI tool for capturing agent trajectories from ACP-compatible agents.
+
+**Commands:** `capture`, `trials`, `summarize`, `calibrate`, `validate-refs`, `balance`, `schemas`
+
+**Use cases:**
+- Capturing trajectories for downstream evaluation
+- Generating training data (SFT/DPO) with full context
+- Building regression test fixtures for agent behavior
 
 See `.claude/skills/acp-harness/SKILL.md` for complete documentation.
+
+### ACP Adapters (`acp-adapters`)
+
+Discover, create, and validate ACP adapters for agent integration.
+
+**Commands:** `adapter:scaffold`, `adapter:check`
+
+**Use cases:**
+- Finding existing adapters for your agent
+- Building custom ACP adapters from scratch
+- Validating adapter ACP compliance
+
+See `.claude/skills/acp-adapters/SKILL.md` for complete documentation.
+
+### Installing Skills
+
+Install skills for AI coding agents:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project acp-harness
+```
+
+Replace `<agent-name>` with: `claude`, `cursor`, `copilot`, `opencode`, `amp`, `goose`, `factory`
