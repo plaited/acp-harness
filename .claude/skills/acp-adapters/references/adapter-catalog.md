@@ -263,7 +263,7 @@ Open-source AI coding agent (Claude Code alternative).
 | Property | Value |
 |----------|-------|
 | Repository | [github.com/sst/opencode](https://github.com/sst/opencode) |
-| Status | Production (79k+ GitHub stars) |
+| Status | Production |
 
 **Installation:**
 ```bash
