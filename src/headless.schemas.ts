@@ -160,30 +160,14 @@ export type ResultConfig = z.infer<typeof ResultConfigSchema>
 // ============================================================================
 
 /**
- * Schema for headless ACP adapter configuration.
+ * Schema for headless adapter configuration (version 1).
  *
  * @remarks
- * This schema defines everything needed to interact with a headless CLI agent:
- * - Command and flags to spawn
- * - How to pass prompts
- * - How to parse output
- * - Session handling mode
- *
- * Example (Claude):
- * ```json
- * {
- *   "version": 1,
- *   "name": "claude-headless",
- *   "command": ["claude"],
- *   "sessionMode": "stream",
- *   "prompt": { "flag": "-p" },
- *   "output": { "flag": "--output-format", "value": "stream-json" },
- *   "outputEvents": [...]
- * }
- * ```
+ * Version 1 is maintained for backwards compatibility.
+ * New features should use version 2.
  */
-export const HeadlessAdapterSchema = z.object({
-  /** Schema version for forward compatibility */
+export const HeadlessAdapterSchemaV1 = z.object({
+  /** Schema version 1 */
   version: z.literal(1),
 
   /** Human-readable adapter name */
@@ -214,7 +198,7 @@ export const HeadlessAdapterSchema = z.object({
   /** Working directory flag (if CLI needs explicit --cwd) */
   cwdFlag: z.string().optional(),
 
-  /** Output event mappings - how to parse CLI output into ACP updates */
+  /** Output event mappings - how to parse CLI output into updates */
   outputEvents: z.array(OutputEventMappingSchema),
 
   /** Final result extraction configuration */
@@ -223,6 +207,101 @@ export const HeadlessAdapterSchema = z.object({
   /** Template for formatting conversation history (iterative mode only) */
   historyTemplate: z.string().optional(),
 })
+
+/**
+ * Schema for headless adapter configuration (version 2).
+ *
+ * @remarks
+ * Version 2 adds:
+ * - `timeout`: Per-agent default timeout in milliseconds
+ * - `historyTemplate`: More structured template with system and turnFormat
+ *
+ * This schema defines everything needed to interact with a headless CLI agent:
+ * - Command and flags to spawn
+ * - How to pass prompts
+ * - How to parse output
+ * - Session handling mode
+ *
+ * Example (Claude):
+ * ```json
+ * {
+ *   "version": 2,
+ *   "name": "claude-headless",
+ *   "command": ["claude"],
+ *   "sessionMode": "stream",
+ *   "timeout": 90000,
+ *   "prompt": { "flag": "-p" },
+ *   "output": { "flag": "--output-format", "value": "stream-json" },
+ *   "outputEvents": [...]
+ * }
+ * ```
+ */
+export const HeadlessAdapterSchemaV2 = z.object({
+  /** Schema version 2 */
+  version: z.literal(2),
+
+  /** Human-readable adapter name */
+  name: z.string(),
+
+  /** Base command to spawn (e.g., ["claude"], ["gemini"]) */
+  command: z.array(z.string()),
+
+  /**
+   * Session mode determines how multi-turn conversations work:
+   * - 'stream': Keep process alive, multi-turn via stdin
+   * - 'iterative': New process per turn, accumulate context in prompt
+   */
+  sessionMode: z.enum(['stream', 'iterative']),
+
+  /** Default timeout for this agent in milliseconds (can be overridden per-prompt) */
+  timeout: z.number().optional(),
+
+  /** How to pass the prompt */
+  prompt: PromptConfigSchema,
+
+  /** Output format configuration */
+  output: OutputConfigSchema,
+
+  /** Flags for auto-approval in headless mode (e.g., ["--allowedTools", "*"]) */
+  autoApprove: z.array(z.string()).optional(),
+
+  /** Session resume support (stream mode only) */
+  resume: ResumeConfigSchema.optional(),
+
+  /** Working directory flag (if CLI needs explicit --cwd) */
+  cwdFlag: z.string().optional(),
+
+  /** Output event mappings - how to parse CLI output into updates */
+  outputEvents: z.array(OutputEventMappingSchema),
+
+  /** Final result extraction configuration */
+  result: ResultConfigSchema,
+
+  /**
+   * Template for formatting conversation history (iterative mode only).
+   *
+   * @remarks
+   * Version 2 supports both string format (simple) and object format (advanced):
+   * - String: "User: {{input}}\nAssistant: {{output}}"
+   * - Object: { system: "...", turnFormat: "..." }
+   */
+  historyTemplate: z
+    .union([
+      z.string(),
+      z.object({
+        /** System prefix for accumulated history */
+        system: z.string().optional(),
+        /** Format for each turn: {{input}} and {{output}} placeholders */
+        turnFormat: z.string(),
+      }),
+    ])
+    .optional(),
+})
+
+/**
+ * Schema for headless adapter configuration (supports v1 and v2).
+ */
+export const HeadlessAdapterSchema = z.union([HeadlessAdapterSchemaV1, HeadlessAdapterSchemaV2])
 
 /** Headless adapter configuration type */
 export type HeadlessAdapterConfig = z.infer<typeof HeadlessAdapterSchema>

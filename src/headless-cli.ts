@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Headless ACP adapter factory CLI entry point.
+ * Headless adapter factory CLI entry point.
  *
  * @remarks
- * This module implements a schema-driven ACP adapter that can interact with
+ * This module implements a schema-driven adapter that can interact with
  * ANY headless CLI agent. The adapter:
  *
  * 1. Reads a JSON schema defining how to interact with the CLI
  * 2. Spawns the CLI process per schema's command + flags
  * 3. Parses stdout using schema's outputEvents mappings
- * 4. Emits ACP session/update notifications
+ * 4. Emits session update notifications
  * 5. Manages session state for multi-turn (stream or iterative mode)
  *
  * @packageDocumentation
@@ -359,7 +359,7 @@ export const headless = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness headless --schema <path> [--verbose]
+Usage: agent-eval-harness headless --schema <path> [--verbose]
 
 Arguments:
   -s, --schema    Path to headless adapter schema (JSON)
@@ -367,9 +367,9 @@ Arguments:
   -h, --help      Show this help message
 
 Description:
-  Schema-driven ACP adapter for ANY headless CLI agent. The adapter reads
+  Schema-driven adapter for ANY headless CLI agent. The adapter reads
   a JSON schema defining how to interact with the CLI and translates between
-  ACP protocol and CLI stdio.
+  protocol and CLI stdio.
 
 Schema Format:
   {
@@ -385,23 +385,17 @@ Schema Format:
 
 Examples:
   # Run with Claude headless schema
-  acp-harness headless --schema ./claude-headless.json
+  agent-eval-harness headless --schema ./claude-headless.json
 
   # Use in capture pipeline
-  acp-harness capture prompts.jsonl \\
-    acp-harness headless --schema ./claude-headless.json \\
-    -o results.jsonl
-
-  # Validate adapter compliance
-  acp-harness adapter:check \\
-    acp-harness headless --schema ./gemini-headless.json
+  agent-eval-harness capture prompts.jsonl --schema ./claude-headless.json -o results.jsonl
 `)
     return
   }
 
   if (!values.schema) {
     console.error('Error: --schema is required')
-    console.error('Example: acp-harness headless --schema ./my-agent.json')
+    console.error('Example: agent-eval-harness headless --schema ./my-agent.json')
     process.exit(1)
   }
 

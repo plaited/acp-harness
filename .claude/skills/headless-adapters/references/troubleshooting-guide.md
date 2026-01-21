@@ -184,7 +184,7 @@ Use `stdin: true` when:
 
 Some CLIs have the output format embedded in the base command (e.g., `codex exec --json`), so the schema doesn't need separate `output.flag` and `output.value` fields. However, the `output` field is required by the adapter schema.
 
-Before acp-harness 0.4.3, specifying empty output values would add two empty strings as command arguments:
+Before agent-eval-harness 0.4.3, specifying empty output values would add two empty strings as command arguments:
 
 ```bash
 # Schema with empty output
@@ -199,9 +199,9 @@ codex exec --json - "" ""
 
 ### Solution
 
-**acp-harness 0.4.3+:** Empty output flags are automatically skipped - no changes needed.
+**agent-eval-harness 0.4.3+:** Empty output flags are automatically skipped - no changes needed.
 
-**acp-harness 0.4.2 and earlier:** Use a workaround by putting the output format in the command array:
+**agent-eval-harness 0.4.2 and earlier:** Use a workaround by putting the output format in the command array:
 
 ```json
 {
@@ -217,7 +217,7 @@ Even though Codex doesn't use these flags, this prevents empty strings from bein
 Use empty `output.flag` and `output.value` when:
 - CLI has output format embedded in command
 - No additional flags needed for JSON output
-- acp-harness version is 0.4.3 or later
+- agent-eval-harness version is 0.4.3 or later
 
 **Examples:**
 - Codex: `codex exec --json` (format is in command)
@@ -566,7 +566,7 @@ The `result` configuration marks when the agent is done:
 1. **Check if events are being matched at all:**
    ```bash
    # Run adapter:check with verbose mode
-   adapter:check --verbose -- bunx @plaited/acp-harness headless --schema schema.json
+   bunx @plaited/agent-eval-harness headless --schema schema.json --debug
    ```
 
 2. **Verify JSON structure matches your paths:**

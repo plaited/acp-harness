@@ -17,7 +17,7 @@ Export a `grade` function matching the `Grader` type:
 
 ```typescript
 // my-grader.ts
-import type { Grader } from '@plaited/acp-harness/schemas'
+import type { Grader } from '@plaited/agent-eval-harness/schemas'
 
 export const grade: Grader = async ({ input, output, hint, trajectory }) => {
   // Your scoring logic
@@ -32,7 +32,7 @@ export const grade: Grader = async ({ input, output, hint, trajectory }) => {
 
 **Usage:**
 ```bash
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
+agent-eval-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
 ```
 
 ## Python Grader
@@ -69,7 +69,7 @@ print(json.dumps({
 **Usage:**
 ```bash
 chmod +x ./grader.py
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+agent-eval-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
 ```
 
 ## Executable Protocol
@@ -141,7 +141,7 @@ Wrap an LLM call in your grader for semantic evaluation:
 ```typescript
 // llm-judge.ts
 import Anthropic from '@anthropic-ai/sdk'
-import type { Grader } from '@plaited/acp-harness/schemas'
+import type { Grader } from '@plaited/agent-eval-harness/schemas'
 
 const client = new Anthropic()
 

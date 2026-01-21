@@ -17,8 +17,6 @@ import {
   MessageStepSchema,
   PlanStepSchema,
   PromptCaseSchema,
-  RequestPermissionRequestSchema,
-  SessionNotificationSchema,
   SessionSchema,
   ThoughtStepSchema,
   TimingSchema,
@@ -188,55 +186,6 @@ describe('JsonRpcMessageSchema', () => {
       result: 'ok',
     })
     expect(result.success).toBe(true)
-  })
-})
-
-// ============================================================================
-// ACP SDK Type Schemas
-// ============================================================================
-
-describe('SessionNotificationSchema', () => {
-  test('validates session notification structure', () => {
-    const result = SessionNotificationSchema.safeParse({
-      sessionId: 'sess_123',
-      update: { type: 'message' },
-    })
-    expect(result.success).toBe(true)
-  })
-
-  test('rejects missing sessionId', () => {
-    const result = SessionNotificationSchema.safeParse({
-      update: { type: 'message' },
-    })
-    expect(result.success).toBe(false)
-  })
-
-  test('rejects missing update', () => {
-    const result = SessionNotificationSchema.safeParse({
-      sessionId: 'sess_123',
-    })
-    expect(result.success).toBe(false)
-  })
-})
-
-describe('RequestPermissionRequestSchema', () => {
-  test('validates permission request with options array', () => {
-    const result = RequestPermissionRequestSchema.safeParse({
-      options: [{ id: 1, label: 'Allow' }],
-    })
-    expect(result.success).toBe(true)
-  })
-
-  test('rejects missing options', () => {
-    const result = RequestPermissionRequestSchema.safeParse({})
-    expect(result.success).toBe(false)
-  })
-
-  test('rejects non-array options', () => {
-    const result = RequestPermissionRequestSchema.safeParse({
-      options: 'not-an-array',
-    })
-    expect(result.success).toBe(false)
   })
 })
 

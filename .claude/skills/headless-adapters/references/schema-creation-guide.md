@@ -14,8 +14,7 @@ flowchart TD
     B --> C["3. Capture Sample Output"]
     C --> D["4. Map JSONPath Patterns"]
     D --> E["5. Create Schema File"]
-    E --> F["6. Test with Headless"]
-    F --> G["7. Validate with adapter:check"]
+    E --> F["6. Test with Debug Mode"]
 ```
 
 ### Step 1: Explore CLI Help
@@ -104,7 +103,7 @@ Use an existing schema as a template:
 
 ```bash
 # Copy from tested schema
-cp .claude/skills/acp-adapters/schemas/claude-headless.json ./my-agent-headless.json
+cp .claude/skills/headless-adapters/schemas/claude-headless.json ./my-agent-headless.json
 ```
 
 Modify for your agent:
@@ -151,25 +150,21 @@ Run the headless adapter with your schema:
 
 ```bash
 # Test the adapter
-AGENT_API_KEY=... bunx @plaited/acp-harness headless --schema ./my-agent-headless.json
+AGENT_API_KEY=... bunx @plaited/agent-eval-harness headless --schema ./my-agent-headless.json
 ```
 
-### Step 7: Validate with adapter:check
+### Step 6: Test with Debug Mode
 
-Verify ACP compliance:
+Use debug mode to verify JSONPath extraction:
 
 ```bash
-bunx @plaited/acp-harness adapter:check \
-  bunx @plaited/acp-harness headless --schema ./my-agent-headless.json
+AGENT_API_KEY=... bunx @plaited/agent-eval-harness headless --schema ./my-agent-headless.json --debug
 ```
 
-All 6 checks should pass:
-- `spawn` - Adapter launches
-- `initialize` - Protocol handshake works
-- `session/new` - Session creation works
-- `session/prompt` - Prompt handling works
-- `session/cancel` - Cancel is acknowledged
-- `framing` - Valid JSON-RPC framing
+Debug mode shows:
+- Raw CLI output lines
+- JSONPath match attempts
+- Extracted values for each event
 
 ## Schema Field Reference
 

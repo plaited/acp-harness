@@ -110,22 +110,23 @@ describe('runCapture configuration', () => {
     // Type-level test - if this compiles, the types are correct
     const config: CaptureConfig = {
       promptsPath: '/tmp/prompts.jsonl',
-      agentCommand: ['bunx', 'test-agent'],
+      schemaPath: './schemas/claude-headless.json',
       outputPath: '/tmp/output.jsonl',
       cwd: '/tmp',
       timeout: 30000,
       progress: true,
       append: false,
+      debug: false,
     }
 
     expect(config.promptsPath).toBe('/tmp/prompts.jsonl')
-    expect(config.agentCommand).toEqual(['bunx', 'test-agent'])
+    expect(config.schemaPath).toBe('./schemas/claude-headless.json')
   })
 
   test('CaptureConfig allows minimal configuration', () => {
     const config: CaptureConfig = {
       promptsPath: '/tmp/prompts.jsonl',
-      agentCommand: ['echo', 'test'],
+      schemaPath: './test-schema.json',
     }
 
     expect(config.outputPath).toBeUndefined()
@@ -151,13 +152,14 @@ describe('capture CLI', () => {
     const stdout = await new Response(proc.stdout).text()
     await proc.exited
 
-    expect(stdout).toContain('Usage: acp-harness capture')
+    expect(stdout).toContain('Usage: agent-eval-harness capture')
     expect(stdout).toContain('prompts.jsonl')
     expect(stdout).toContain('-o, --output')
     expect(stdout).toContain('-c, --cwd')
     expect(stdout).toContain('-t, --timeout')
     expect(stdout).toContain('--progress')
     expect(stdout).toContain('-g, --grader')
+    expect(stdout).toContain('-s, --schema')
   })
 
   test('shows error for missing prompts file argument', async () => {
@@ -173,7 +175,7 @@ describe('capture CLI', () => {
     expect(stderr).toContain('prompts.jsonl path is required')
   })
 
-  test('shows error for missing agent command', async () => {
+  test('shows error for missing schema argument', async () => {
     const proc = Bun.spawn(['bun', './bin/cli.ts', 'capture', '/tmp/prompts.jsonl'], {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -183,6 +185,6 @@ describe('capture CLI', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).not.toBe(0)
-    expect(stderr).toContain('ACP agent command is required')
+    expect(stderr).toContain('--schema is required')
   })
 })

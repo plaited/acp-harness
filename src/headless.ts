@@ -1,5 +1,5 @@
 /**
- * Headless ACP adapter factory - schema-driven adapter for any CLI agent.
+ * Headless adapter factory - schema-driven adapter for any CLI agent.
  *
  * @remarks
  * Re-exports public API from the headless module. The headless adapter enables
@@ -8,12 +8,12 @@
  *
  * **CLI Usage:**
  * ```bash
- * acp-harness headless --schema ./my-agent.json
+ * agent-eval-harness headless --schema ./my-agent.json
  * ```
  *
  * **Programmatic Usage:**
  * ```typescript
- * import { parseHeadlessConfig, createSessionManager } from '@plaited/acp-harness/headless'
+ * import { parseHeadlessConfig, createSessionManager } from '@plaited/agent-eval-harness/headless'
  *
  * const schema = parseHeadlessConfig(jsonConfig)
  * const sessions = createSessionManager({ schema })
@@ -61,6 +61,7 @@ export type {
 // Output parser
 export { createOutputParser, jsonPath, jsonPathString } from './headless-output-parser.ts'
 export type {
+  ProcessExitInfo,
   PromptResult,
   Session,
   SessionManager,

@@ -1,16 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import type { SessionNotification } from '@agentclientprotocol/sdk'
 import {
   detectTrajectoryRichness,
   extractContent,
   extractFilePath,
   extractOutput,
-  extractTokenCounts,
   extractTrajectory,
   hasToolErrors,
   headTailPreview,
   loadPrompts,
 } from '../capture.ts'
+import type { ParsedUpdate } from '../headless-output-parser.ts'
 import type { TrajectoryStep } from '../schemas.ts'
 
 // ============================================================================
@@ -104,176 +103,106 @@ describe('loadPrompts', () => {
 describe('extractTrajectory', () => {
   const baseTime = 0
 
-  test('extracts thoughts from agent_thought_chunk notifications', () => {
-    const notifications: SessionNotification[] = [
+  test('extracts thoughts from thought type updates', () => {
+    const updates: ParsedUpdate[] = [
       {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'agent_thought_chunk',
-          content: { type: 'text', text: 'Let me think about this...' },
-        },
+        type: 'thought',
+        content: 'Let me think about this...',
+        raw: { type: 'thought', text: 'Let me think about this...' },
       },
     ]
 
-    const trajectory = extractTrajectory(notifications, baseTime)
+    const trajectory = extractTrajectory(updates, baseTime)
 
     expect(trajectory).toHaveLength(1)
     expect(trajectory[0]?.type).toBe('thought')
-    // Type narrowing after explicit assertion
     const step = trajectory[0]!
     expect(step.type === 'thought' && step.content).toBe('Let me think about this...')
   })
 
-  test('extracts messages from agent_message_chunk notifications', () => {
-    const notifications: SessionNotification[] = [
+  test('extracts messages from message type updates', () => {
+    const updates: ParsedUpdate[] = [
       {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: 'Here is my answer.' },
-        },
+        type: 'message',
+        content: 'Here is my answer.',
+        raw: { type: 'message', text: 'Here is my answer.' },
       },
     ]
 
-    const trajectory = extractTrajectory(notifications, baseTime)
+    const trajectory = extractTrajectory(updates, baseTime)
 
     expect(trajectory).toHaveLength(1)
     expect(trajectory[0]?.type).toBe('message')
-    // Type narrowing after explicit assertion
     const step = trajectory[0]!
     expect(step.type === 'message' && step.content).toBe('Here is my answer.')
   })
 
-  test('extracts tool calls with initial pending status', () => {
-    const notifications: SessionNotification[] = [
+  test('extracts tool calls with title and status', () => {
+    const updates: ParsedUpdate[] = [
       {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'tool_call',
-          toolCallId: 't1',
-          title: 'Read',
-          status: 'pending',
-          rawInput: '{"file_path": "/test.ts"}',
-        },
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        raw: { tool: 'Read', input: { file_path: '/test.ts' } },
       },
     ]
 
-    const trajectory = extractTrajectory(notifications, baseTime)
+    const trajectory = extractTrajectory(updates, baseTime)
 
     expect(trajectory).toHaveLength(1)
     expect(trajectory[0]?.type).toBe('tool_call')
-    // Type narrowing after explicit assertion
     const step = trajectory[0]!
     expect(step.type === 'tool_call' && step.name).toBe('Read')
     expect(step.type === 'tool_call' && step.status).toBe('pending')
-    expect(step.type === 'tool_call' && step.input).toBe('{"file_path": "/test.ts"}')
   })
 
-  test('updates tool call status on subsequent notifications', () => {
-    const notifications: SessionNotification[] = [
+  test('extracts plan type updates', () => {
+    const updates: ParsedUpdate[] = [
       {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'tool_call',
-          toolCallId: 't1',
-          title: 'Read',
-          status: 'pending',
-        },
-      },
-      {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'tool_call',
-          toolCallId: 't1',
-          title: 'Read',
-          status: 'completed',
-          rawOutput: 'file contents here',
-        },
-      },
-    ]
-
-    const trajectory = extractTrajectory(notifications, baseTime)
-
-    // Should still be 1 entry, just updated
-    expect(trajectory).toHaveLength(1)
-    expect(trajectory[0]?.type).toBe('tool_call')
-    // Type narrowing after explicit assertion
-    const step = trajectory[0]!
-    expect(step.type === 'tool_call' && step.status).toBe('completed')
-    expect(step.type === 'tool_call' && step.output).toBe('file contents here')
-  })
-
-  test('tracks multiple independent tool calls', () => {
-    const notifications: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Read', status: 'completed' },
-      },
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'tool_call', toolCallId: 't2', title: 'Write', status: 'completed' },
-      },
-    ]
-
-    const trajectory = extractTrajectory(notifications, baseTime)
-
-    expect(trajectory).toHaveLength(2)
-    expect(trajectory[0]?.type).toBe('tool_call')
-    expect(trajectory[1]?.type).toBe('tool_call')
-    // Type narrowing after explicit assertions
-    const step0 = trajectory[0]!
-    const step1 = trajectory[1]!
-    expect(step0.type === 'tool_call' && step0.name).toBe('Read')
-    expect(step1.type === 'tool_call' && step1.name).toBe('Write')
-  })
-
-  test('extracts plan entries', () => {
-    const notifications: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'plan',
+        type: 'plan',
+        raw: {
           entries: [
-            { content: 'Step 1', status: 'completed', priority: 'high' },
-            { content: 'Step 2', status: 'in_progress', priority: 'medium' },
+            { content: 'Step 1', status: 'completed' },
+            { content: 'Step 2', status: 'in_progress' },
           ],
         },
       },
     ]
 
-    const trajectory = extractTrajectory(notifications, baseTime)
+    const trajectory = extractTrajectory(updates, baseTime)
 
     expect(trajectory).toHaveLength(1)
     expect(trajectory[0]?.type).toBe('plan')
-    // Type narrowing after explicit assertion
+    // Note: extractTrajectory creates plan entries from the update type
+    // but doesn't extract entries from raw (they are captured via output parser mappings)
     const step = trajectory[0]!
-    expect(step.type === 'plan' && step.entries).toHaveLength(2)
+    expect(step.type === 'plan').toBe(true)
   })
 
-  test('handles empty notifications', () => {
+  test('handles empty updates', () => {
     const trajectory = extractTrajectory([], baseTime)
     expect(trajectory).toEqual([])
   })
 
   test('assigns timestamps relative to start time', () => {
-    // Mock Date.now to control timestamps
     const originalNow = Date.now
     try {
       let currentTime = 1000
 
       Date.now = () => currentTime
 
-      const notifications: SessionNotification[] = [
+      const updates: ParsedUpdate[] = [
         {
-          sessionId: 's1',
-          update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'First' } },
+          type: 'message',
+          content: 'First',
+          raw: { type: 'message', text: 'First' },
         },
       ]
 
       const startTime = 1000
       currentTime = 1500 // 500ms later
 
-      const trajectory = extractTrajectory(notifications, startTime)
+      const trajectory = extractTrajectory(updates, startTime)
 
       expect(trajectory[0]?.timestamp).toBe(500)
     } finally {
@@ -281,65 +210,26 @@ describe('extractTrajectory', () => {
     }
   })
 
-  test('calculates tool call duration correctly', () => {
-    const originalNow = Date.now
-    try {
-      let currentTime = 1000
-
-      Date.now = () => currentTime
-
-      const startTime = 1000
-
-      // Simulate time passing between notifications
-      // First notification at t=100 (currentTime = 1100)
-      // Second notification at t=600 (currentTime = 1600)
-      const notifications: SessionNotification[] = []
-
-      currentTime = 1100 // First call at 100ms relative to start
-      notifications.push({
-        sessionId: 's1',
-        update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Bash', status: 'pending' },
-      })
-
-      currentTime = 1600 // Second call at 600ms relative to start
-      notifications.push({
-        sessionId: 's1',
-        update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Bash', status: 'completed' },
-      })
-
-      // Now process all notifications in one call
-      // But the issue is extractTrajectory calls Date.now() for each notification
-      // so we need to mock it to return different values for each call
-
-      let callCount = 0
-      const times = [1100, 1600]
-      Date.now = () => times[callCount++] ?? 1600
-
-      const trajectory = extractTrajectory(notifications, startTime)
-
-      expect(trajectory[0]?.type).toBe('tool_call')
-      // Type narrowing after explicit assertion - Duration should be 500ms (600 - 100)
-      const step = trajectory[0]!
-      expect(step.type === 'tool_call' && step.duration).toBe(500)
-    } finally {
-      Date.now = originalNow
-    }
-  })
-
-  test('ignores non-text content in thought chunks', () => {
-    const notifications: SessionNotification[] = [
+  test('handles updates without content for message/thought types', () => {
+    const updates: ParsedUpdate[] = [
       {
-        sessionId: 's1',
-        update: {
-          sessionUpdate: 'agent_thought_chunk',
-          // Image content should be skipped
-          content: { type: 'image', data: 'base64', mimeType: 'image/png' },
-        },
+        type: 'message',
+        content: undefined, // No content - will have empty string
+        raw: { type: 'message' },
+      },
+      {
+        type: 'message',
+        content: 'Has content',
+        raw: { type: 'message', text: 'Has content' },
       },
     ]
 
-    const trajectory = extractTrajectory(notifications, baseTime)
-    expect(trajectory).toHaveLength(0)
+    const trajectory = extractTrajectory(updates, baseTime)
+
+    // Both messages are included - ones without content get empty string
+    expect(trajectory).toHaveLength(2)
+    expect(trajectory[0]?.type).toBe('message')
+    expect(trajectory[1]?.type).toBe('message')
   })
 })
 
@@ -630,86 +520,5 @@ describe('detectTrajectoryRichness', () => {
     ]
 
     expect(detectTrajectoryRichness(trajectory)).toBe('full')
-  })
-})
-
-// ============================================================================
-// extractTokenCounts
-// ============================================================================
-
-describe('extractTokenCounts', () => {
-  test('returns undefined when no usage data present', () => {
-    const updates: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
-      },
-    ]
-
-    const result = extractTokenCounts(updates)
-
-    expect(result.inputTokens).toBeUndefined()
-    expect(result.outputTokens).toBeUndefined()
-  })
-
-  test('extracts token counts from usage field when present', () => {
-    const updates: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
-        // @ts-expect-error - SessionNotification type doesn't include 'usage' field, but adapters like Claude Code add it at runtime
-        usage: { inputTokens: 50, outputTokens: 30 },
-      },
-    ]
-
-    const result = extractTokenCounts(updates)
-
-    expect(result.inputTokens).toBe(50)
-    expect(result.outputTokens).toBe(30)
-  })
-
-  test('accumulates token counts across multiple updates', () => {
-    const updates: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'First' } },
-        // @ts-expect-error - SessionNotification type doesn't include 'usage' field, but adapters like Claude Code add it at runtime
-        usage: { inputTokens: 50, outputTokens: 30 },
-      },
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Second' } },
-        // @ts-expect-error - SessionNotification type doesn't include 'usage' field, but adapters like Claude Code add it at runtime
-        usage: { inputTokens: 25, outputTokens: 45 },
-      },
-    ]
-
-    const result = extractTokenCounts(updates)
-
-    expect(result.inputTokens).toBe(75) // 50 + 25
-    expect(result.outputTokens).toBe(75) // 30 + 45
-  })
-
-  test('handles empty updates array', () => {
-    const result = extractTokenCounts([])
-
-    expect(result.inputTokens).toBeUndefined()
-    expect(result.outputTokens).toBeUndefined()
-  })
-
-  test('handles partial token counts (only input or output)', () => {
-    const updates: SessionNotification[] = [
-      {
-        sessionId: 's1',
-        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
-        // @ts-expect-error - SessionNotification type doesn't include 'usage' field, but adapters like Claude Code add it at runtime
-        usage: { inputTokens: 100 },
-      },
-    ]
-
-    const result = extractTokenCounts(updates)
-
-    expect(result.inputTokens).toBe(100)
-    expect(result.outputTokens).toBeUndefined()
   })
 })

@@ -13,11 +13,12 @@
 
 import { appendFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { createACPClient } from './acp-client.ts'
-import { createPrompt } from './acp-helpers.ts'
 import { extractOutput, extractTrajectory, loadPrompts } from './capture.ts'
 import { DEFAULT_HARNESS_TIMEOUT, DEFAULT_TRIAL_COUNT } from './constants.ts'
 import { loadGrader } from './grader-loader.ts'
+import { type HeadlessAdapterConfig, parseHeadlessConfig } from './headless.schemas.ts'
+import type { ParsedUpdate } from './headless-output-parser.ts'
+import { createSessionManager } from './headless-session-manager.ts'
 import type { Grader, TrialEntry, TrialResult } from './schemas.ts'
 
 // ============================================================================
@@ -77,15 +78,15 @@ export const calculatePassExpK = (passes: number, k: number): number => {
 export type TrialsConfig = {
   /** Path to prompts.jsonl file */
   promptsPath: string
-  /** ACP agent command */
-  agentCommand: string[]
+  /** Path to agent schema JSON file */
+  schemaPath: string
   /** Number of trials per prompt */
   k: number
   /** Output file path */
   outputPath?: string
   /** Working directory for agent */
   cwd?: string
-  /** Timeout per prompt in milliseconds */
+  /** Timeout per prompt in milliseconds (overrides schema default) */
   timeout?: number
   /** Show progress to stderr */
   progress?: boolean
@@ -93,6 +94,8 @@ export type TrialsConfig = {
   append?: boolean
   /** Optional grader function */
   grader?: Grader
+  /** Enable debug mode */
+  debug?: boolean
 }
 
 // ============================================================================
@@ -139,15 +142,30 @@ const logProgress = (message: string, showProgress: boolean): void => {
 export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> => {
   const {
     promptsPath,
-    agentCommand,
+    schemaPath,
     k,
     outputPath,
     cwd,
-    timeout = DEFAULT_HARNESS_TIMEOUT,
+    timeout,
     progress = false,
     append = false,
     grader,
+    debug = false,
   } = config
+
+  // Load and validate schema
+  const schemaFile = Bun.file(schemaPath)
+  if (!(await schemaFile.exists())) {
+    throw new Error(`Schema file not found: ${schemaPath}`)
+  }
+
+  let schema: HeadlessAdapterConfig
+  try {
+    const rawSchema = await schemaFile.json()
+    schema = parseHeadlessConfig(rawSchema)
+  } catch (error) {
+    throw new Error(`Invalid schema: ${error instanceof Error ? error.message : String(error)}`)
+  }
 
   // Load prompts
   const prompts = await loadPrompts(promptsPath)
@@ -155,19 +173,25 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
   // Resolve output path
   const resolvedOutputPath = outputPath ? resolvePath(outputPath) : undefined
 
+  // Determine effective timeout (CLI flag > schema default > harness default)
+  const schemaTimeout = 'timeout' in schema ? schema.timeout : undefined
+  const effectiveTimeout = timeout ?? schemaTimeout ?? DEFAULT_HARNESS_TIMEOUT
+
   // Log progress info
   logProgress(`Loaded ${prompts.length} prompts from ${promptsPath}`, progress)
   logProgress(`Running ${k} trials per prompt`, progress)
-  logProgress(`Command: ${agentCommand.join(' ')}`, progress)
+  logProgress(`Schema: ${schema.name} (${schemaPath})`, progress)
+  logProgress(`Timeout: ${effectiveTimeout}ms`, progress)
   if (grader) {
     logProgress('Grader: enabled (will compute pass@k metrics)', progress)
   }
 
-  // Create ACP client
-  const client = createACPClient({
-    command: agentCommand,
-    cwd,
-    timeout,
+  // Create session manager with schema
+  const sessions = createSessionManager({
+    schema,
+    timeout: effectiveTimeout,
+    verbose: progress,
+    debug,
   })
 
   // Clear output file if not appending
@@ -175,117 +199,115 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
     await Bun.write(resolvedOutputPath, '')
   }
 
-  // Session params - agents auto-discover MCP configs from cwd
-  const sessionParams = {
-    cwd: cwd ?? process.cwd(),
-  }
-
+  const workingDir = cwd ?? process.cwd()
   const results: TrialResult[] = []
   let isFirstOutput = true
 
-  try {
-    logProgress('Connecting to agent...', progress)
-    await client.connect()
-    logProgress('Connected!', progress)
+  // Run evaluations
+  for (let i = 0; i < prompts.length; i++) {
+    const promptCase = prompts[i]
+    if (!promptCase) continue
 
-    // Run evaluations
-    for (let i = 0; i < prompts.length; i++) {
-      const promptCase = prompts[i]
-      if (!promptCase) continue
+    logProgress(`[${i + 1}/${prompts.length}] ${promptCase.id}: Running ${k} trials...`, progress)
 
-      logProgress(`[${i + 1}/${prompts.length}] ${promptCase.id}: Running ${k} trials...`, progress)
+    const trialEntries: TrialEntry[] = []
 
-      const trialEntries: TrialEntry[] = []
+    for (let trialNum = 1; trialNum <= k; trialNum++) {
+      // Create fresh session for each trial
+      const session = await sessions.create(workingDir)
+      const startTime = Date.now()
 
-      for (let trialNum = 1; trialNum <= k; trialNum++) {
-        // Create fresh session for each trial
-        const session = await client.createSession(sessionParams)
-        const startTime = Date.now()
+      try {
+        // Handle string or array input
+        const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
+        const allUpdates: ParsedUpdate[] = []
 
-        try {
-          const inputText = Array.isArray(promptCase.input) ? promptCase.input.join('\n') : promptCase.input
-          const prompt = createPrompt(inputText)
-          const { updates } = await client.promptSync(session.id, prompt)
+        // TODO: Per-prompt timeout from promptCase.timeout is documented but not yet implemented
 
-          const endTime = Date.now()
-          const trajectory = extractTrajectory(updates, startTime)
-          const output = extractOutput(trajectory)
-
-          const entry: TrialEntry = {
-            trialNum,
-            output,
-            trajectory,
-            duration: endTime - startTime,
-          }
-
-          // Apply grader if provided
-          if (grader) {
-            const graderResult = await grader({
-              input: promptCase.input,
-              output,
-              hint: promptCase.hint,
-              trajectory,
-            })
-            entry.pass = graderResult.pass
-            entry.score = graderResult.score
-            entry.reasoning = graderResult.reasoning
-          }
-
-          trialEntries.push(entry)
-          logProgress(
-            `    Trial ${trialNum}/${k}: ${entry.pass !== undefined ? (entry.pass ? '✓' : '✗') : '?'}`,
-            progress,
-          )
-        } catch (error) {
-          const endTime = Date.now()
-          const message = error instanceof Error ? error.message : String(error)
-
-          trialEntries.push({
-            trialNum,
-            output: '',
-            trajectory: [],
-            duration: endTime - startTime,
-            pass: false,
-            reasoning: `Error: ${message}`,
-          })
-          logProgress(`    Trial ${trialNum}/${k}: ! (error)`, progress)
+        // Execute each turn sequentially
+        for (const turnInput of inputs) {
+          const turnResult = await sessions.prompt(session.id, turnInput)
+          allUpdates.push(...turnResult.updates)
         }
-      }
 
-      // Build result
-      const result: TrialResult = {
-        id: promptCase.id,
-        input: promptCase.input,
-        ...(promptCase.hint && { hint: promptCase.hint }),
-        k,
-        trials: trialEntries,
-      }
+        const endTime = Date.now()
+        const trajectory = extractTrajectory(allUpdates, startTime)
+        const output = extractOutput(trajectory)
 
-      // Calculate metrics if grader was used
-      if (grader) {
-        const passes = trialEntries.filter((t) => t.pass).length
-        result.passRate = passes / k
-        result.passAtK = calculatePassAtK(passes, k)
-        result.passExpK = calculatePassExpK(passes, k)
-      }
+        const entry: TrialEntry = {
+          trialNum,
+          output,
+          trajectory,
+          duration: endTime - startTime,
+        }
 
-      results.push(result)
+        // Apply grader if provided
+        if (grader) {
+          const graderResult = await grader({
+            input: promptCase.input,
+            output,
+            hint: promptCase.hint,
+            trajectory,
+          })
+          entry.pass = graderResult.pass
+          entry.score = graderResult.score
+          entry.reasoning = graderResult.reasoning
+        }
 
-      // Write result immediately
-      const formatted = JSON.stringify(result)
-      await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
-      isFirstOutput = false
-
-      if (grader) {
+        trialEntries.push(entry)
         logProgress(
-          `  → passRate=${(result.passRate ?? 0).toFixed(2)}, pass@${k}=${(result.passAtK ?? 0).toFixed(2)}`,
+          `    Trial ${trialNum}/${k}: ${entry.pass !== undefined ? (entry.pass ? '✓' : '✗') : '?'}`,
           progress,
         )
+
+        // Clean up session
+        sessions.destroy(session.id)
+      } catch (error) {
+        const endTime = Date.now()
+        const message = error instanceof Error ? error.message : String(error)
+
+        trialEntries.push({
+          trialNum,
+          output: '',
+          trajectory: [],
+          duration: endTime - startTime,
+          pass: false,
+          reasoning: `Error: ${message}`,
+        })
+        logProgress(`    Trial ${trialNum}/${k}: ! (error)`, progress)
       }
     }
-  } finally {
-    logProgress('Disconnecting...', progress)
-    await client.disconnect()
+
+    // Build result
+    const result: TrialResult = {
+      id: promptCase.id,
+      input: promptCase.input,
+      ...(promptCase.hint && { hint: promptCase.hint }),
+      k,
+      trials: trialEntries,
+    }
+
+    // Calculate metrics if grader was used
+    if (grader) {
+      const passes = trialEntries.filter((t) => t.pass).length
+      result.passRate = passes / k
+      result.passAtK = calculatePassAtK(passes, k)
+      result.passExpK = calculatePassExpK(passes, k)
+    }
+
+    results.push(result)
+
+    // Write result immediately
+    const formatted = JSON.stringify(result)
+    await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
+    isFirstOutput = false
+
+    if (grader) {
+      logProgress(
+        `  → passRate=${(result.passRate ?? 0).toFixed(2)}, pass@${k}=${(result.passAtK ?? 0).toFixed(2)}`,
+        progress,
+      )
+    }
   }
 
   logProgress('Done!', progress)
@@ -305,13 +327,15 @@ export const trials = async (args: string[]): Promise<void> => {
   const { values, positionals } = parseArgs({
     args,
     options: {
+      schema: { type: 'string', short: 's' },
       output: { type: 'string', short: 'o' },
       k: { type: 'string', short: 'k', default: String(DEFAULT_TRIAL_COUNT) },
       cwd: { type: 'string', short: 'c' },
-      timeout: { type: 'string', short: 't', default: String(DEFAULT_HARNESS_TIMEOUT) },
+      timeout: { type: 'string', short: 't' },
       progress: { type: 'boolean', default: false },
       append: { type: 'boolean', default: false },
       grader: { type: 'string', short: 'g' },
+      debug: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h' },
     },
     allowPositionals: true,
@@ -320,20 +344,21 @@ export const trials = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness trials <prompts.jsonl> <command> [args...] [options]
+Usage: agent-eval-harness trials <prompts.jsonl> --schema <schema.json> [options]
 
 Arguments:
   prompts.jsonl     Input file with evaluation prompts
-  command [args]    ACP agent command to execute
 
 Options:
+  -s, --schema      Path to agent schema JSON file (required)
   -o, --output      Output file (default: stdout)
   -k                Number of trials per prompt (default: ${DEFAULT_TRIAL_COUNT})
-  -c, --cwd         Working directory for agent (agents auto-discover MCP configs from here)
-  -t, --timeout     Request timeout in ms (default: ${DEFAULT_HARNESS_TIMEOUT})
+  -c, --cwd         Working directory for agent
+  -t, --timeout     Request timeout in ms (overrides schema default)
   --progress        Show progress to stderr
   --append          Append to output file
   -g, --grader      Path to grader (.ts/.js module or executable script)
+  --debug           Enable debug mode
   -h, --help        Show this help message
 
 Output Format:
@@ -346,13 +371,13 @@ Graders:
 
 Examples:
   # Capture only
-  acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 -o trials.jsonl
+  agent-eval-harness trials prompts.jsonl -s claude.json -k 5 -o trials.jsonl
 
   # With TypeScript grader
-  acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+  agent-eval-harness trials prompts.jsonl -s claude.json -k 5 --grader ./grader.ts -o trials.jsonl
 
   # With Python grader
-  acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.py -o trials.jsonl
+  agent-eval-harness trials prompts.jsonl -s claude.json -k 5 --grader ./grader.py -o trials.jsonl
 `)
     return
   }
@@ -363,9 +388,9 @@ Examples:
     process.exit(1)
   }
 
-  const agentCommand = positionals.slice(1)
-  if (agentCommand.length === 0) {
-    console.error('Error: ACP agent command is required')
+  if (!values.schema) {
+    console.error('Error: --schema is required')
+    console.error('Example: agent-eval-harness trials prompts.jsonl --schema ./claude.json')
     process.exit(1)
   }
 
@@ -382,13 +407,14 @@ Examples:
 
   await runTrials({
     promptsPath,
-    agentCommand,
+    schemaPath: values.schema,
     k: Number.parseInt(values.k ?? String(DEFAULT_TRIAL_COUNT), 10),
     outputPath: values.output,
     cwd: values.cwd,
-    timeout: Number.parseInt(values.timeout ?? String(DEFAULT_HARNESS_TIMEOUT), 10),
+    timeout: values.timeout ? Number.parseInt(values.timeout, 10) : undefined,
     progress: values.progress ?? false,
     append: values.append ?? false,
     grader,
+    debug: values.debug ?? false,
   })
 }

@@ -2,7 +2,7 @@
  * Core trajectory capture command.
  *
  * @remarks
- * Executes prompts against an ACP agent and captures full trajectories.
+ * Executes prompts against a CLI agent and captures full trajectories.
  * This is the foundational command - all other views derive from its output.
  *
  * Output format is always full trajectory JSONL (`CaptureResultSchema`).
@@ -13,13 +13,13 @@
 
 import { appendFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import type { SessionNotification, ToolCall } from '@agentclientprotocol/sdk'
-import { createACPClient } from './acp-client.ts'
-import { createPrompt } from './acp-helpers.ts'
 import { DEFAULT_HARNESS_TIMEOUT, HEAD_LINES, TAIL_LINES } from './constants.ts'
 import { loadGrader } from './grader-loader.ts'
+import { type HeadlessAdapterConfig, parseHeadlessConfig } from './headless.schemas.ts'
+import type { ParsedUpdate } from './headless-output-parser.ts'
+import { createSessionManager, type ProcessExitInfo, type PromptResult } from './headless-session-manager.ts'
 import type { CaptureResult, Grader, PromptCase, TrajectoryRichness, TrajectoryStep } from './schemas.ts'
-import { PromptCaseSchema, TokenUsageSchema, ToolInputSchema } from './schemas.ts'
+import { PromptCaseSchema, ToolInputSchema } from './schemas.ts'
 
 // ============================================================================
 // Types
@@ -29,13 +29,13 @@ import { PromptCaseSchema, TokenUsageSchema, ToolInputSchema } from './schemas.t
 export type CaptureConfig = {
   /** Path to prompts.jsonl file */
   promptsPath: string
-  /** ACP agent command (e.g., ['bunx', 'claude-code-acp']) */
-  agentCommand: string[]
+  /** Path to agent schema JSON file */
+  schemaPath: string
   /** Output file path (undefined for stdout) */
   outputPath?: string
   /** Working directory for agent */
   cwd?: string
-  /** Timeout per prompt in milliseconds */
+  /** Timeout per prompt in milliseconds (overrides schema default) */
   timeout?: number
   /** Show progress to stderr */
   progress?: boolean
@@ -43,6 +43,8 @@ export type CaptureConfig = {
   append?: boolean
   /** Optional grader function */
   grader?: Grader
+  /** Enable debug mode for detailed output */
+  debug?: boolean
 }
 
 // ============================================================================
@@ -65,57 +67,49 @@ export const loadPrompts = async (path: string): Promise<PromptCase[]> => {
     })
 }
 
-/** Extract trajectory from session notifications */
-export const extractTrajectory = (notifications: SessionNotification[], startTime: number): TrajectoryStep[] => {
+/** Extract trajectory from parsed updates */
+export const extractTrajectory = (updates: ParsedUpdate[], startTime: number): TrajectoryStep[] => {
   const trajectory: TrajectoryStep[] = []
   const toolCallMap = new Map<string, { start: number; step: TrajectoryStep & { type: 'tool_call' } }>()
 
-  for (const notification of notifications) {
+  for (const update of updates) {
     const timestamp = Date.now() - startTime
-    const update = notification.update
 
-    if (update.sessionUpdate === 'agent_thought_chunk' && update.content.type === 'text') {
+    if (update.type === 'thought') {
       trajectory.push({
         type: 'thought',
-        content: update.content.text,
+        content: update.content ?? '',
         timestamp,
       })
-    } else if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
+    } else if (update.type === 'message') {
       trajectory.push({
         type: 'message',
-        content: update.content.text,
+        content: update.content ?? '',
         timestamp,
       })
-    } else if (update.sessionUpdate === 'tool_call') {
-      const toolCall = update as ToolCall
-      const existing = toolCallMap.get(toolCall.toolCallId)
+    } else if (update.type === 'tool_call') {
+      const toolCallId = update.title ?? `tool_${Date.now()}`
+      const existing = toolCallMap.get(toolCallId)
 
-      if (existing) {
+      if (existing && update.status === 'completed') {
         // Update existing tool call with completion info
-        existing.step.status = toolCall.status ?? 'pending'
-        if (toolCall.content) {
-          existing.step.output = toolCall.content
-        }
-        if (toolCall.rawOutput) {
-          existing.step.output = toolCall.rawOutput
-        }
+        existing.step.status = update.status
         existing.step.duration = timestamp - existing.start
-      } else {
+      } else if (!existing) {
         // New tool call
         const step: TrajectoryStep & { type: 'tool_call' } = {
           type: 'tool_call',
-          name: toolCall.title,
-          status: toolCall.status ?? 'pending',
-          input: toolCall.rawInput,
+          name: update.title ?? 'unknown',
+          status: update.status ?? 'pending',
           timestamp,
         }
-        toolCallMap.set(toolCall.toolCallId, { start: timestamp, step })
+        toolCallMap.set(toolCallId, { start: timestamp, step })
         trajectory.push(step)
       }
-    } else if (update.sessionUpdate === 'plan') {
+    } else if (update.type === 'plan') {
       trajectory.push({
         type: 'plan',
-        entries: update.entries,
+        entries: [],
         timestamp,
       })
     }
@@ -217,37 +211,6 @@ export const detectTrajectoryRichness = (trajectory: TrajectoryStep[]): Trajecto
   return hasMessages ? 'messages-only' : 'minimal'
 }
 
-/**
- * Extract token counts from session notifications if available.
- *
- * @remarks
- * Token usage is adapter-dependent. If the adapter doesn't expose usage,
- * these fields will be undefined. Uses Zod validation for runtime type safety.
- */
-export const extractTokenCounts = (updates: SessionNotification[]): { inputTokens?: number; outputTokens?: number } => {
-  let inputTokens: number | undefined
-  let outputTokens: number | undefined
-
-  for (const update of updates) {
-    // Check for token usage in update (adapter-specific)
-    // ACP SDK doesn't declare 'usage' field, but adapters extend it at runtime
-    const updateRecord = update as Record<string, unknown>
-    const usageData = updateRecord.usage ?? (updateRecord.update as Record<string, unknown> | undefined)?.usage
-    const usage = TokenUsageSchema.safeParse(usageData)
-
-    if (usage.success) {
-      if (usage.data.inputTokens !== undefined) {
-        inputTokens = (inputTokens ?? 0) + usage.data.inputTokens
-      }
-      if (usage.data.outputTokens !== undefined) {
-        outputTokens = (outputTokens ?? 0) + usage.data.outputTokens
-      }
-    }
-  }
-
-  return { inputTokens, outputTokens }
-}
-
 /** Get preview text for input (handles string or array) */
 const getInputPreview = (input: string | string[]): string => {
   if (Array.isArray(input)) {
@@ -274,14 +237,29 @@ const getInputPreview = (input: string | string[]): string => {
 export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]> => {
   const {
     promptsPath,
-    agentCommand,
+    schemaPath,
     outputPath,
     cwd,
-    timeout = DEFAULT_HARNESS_TIMEOUT,
+    timeout,
     progress = false,
     append = false,
     grader,
+    debug = false,
   } = config
+
+  // Load and validate schema
+  const schemaFile = Bun.file(schemaPath)
+  if (!(await schemaFile.exists())) {
+    throw new Error(`Schema file not found: ${schemaPath}`)
+  }
+
+  let schema: HeadlessAdapterConfig
+  try {
+    const rawSchema = await schemaFile.json()
+    schema = parseHeadlessConfig(rawSchema)
+  } catch (error) {
+    throw new Error(`Invalid schema: ${error instanceof Error ? error.message : String(error)}`)
+  }
 
   // Load prompts
   const prompts = await loadPrompts(promptsPath)
@@ -289,18 +267,27 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   // Resolve output path
   const resolvedOutputPath = outputPath ? resolvePath(outputPath) : undefined
 
+  // Determine effective timeout (CLI flag > schema default > harness default)
+  const schemaTimeout = 'timeout' in schema ? schema.timeout : undefined
+  const effectiveTimeout = timeout ?? schemaTimeout ?? DEFAULT_HARNESS_TIMEOUT
+
   // Log progress info
   logProgress(`Loaded ${prompts.length} prompts from ${promptsPath}`, progress)
-  logProgress(`Command: ${agentCommand.join(' ')}`, progress)
+  logProgress(`Schema: ${schema.name} (${schemaPath})`, progress)
+  logProgress(`Timeout: ${effectiveTimeout}ms`, progress)
   if (resolvedOutputPath) {
     logProgress(`Output: ${resolvedOutputPath}`, progress)
   }
+  if (debug) {
+    logProgress(`Debug mode: enabled`, progress)
+  }
 
-  // Create ACP client
-  const client = createACPClient({
-    command: agentCommand,
-    cwd,
-    timeout,
+  // Create session manager with schema
+  const sessions = createSessionManager({
+    schema,
+    timeout: effectiveTimeout,
+    verbose: progress,
+    debug,
   })
 
   // Clear output file if not appending
@@ -308,130 +295,135 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
     await Bun.write(resolvedOutputPath, '')
   }
 
-  // Session params - agents auto-discover MCP configs from cwd
-  const sessionParams = {
-    cwd: cwd ?? process.cwd(),
-  }
-
+  const workingDir = cwd ?? process.cwd()
   const results: CaptureResult[] = []
   let isFirstOutput = true
 
-  try {
-    logProgress('Connecting to agent...', progress)
-    await client.connect()
-    logProgress('Connected!', progress)
+  // Run evaluations sequentially - fresh session per entry
+  for (let i = 0; i < prompts.length; i++) {
+    const promptCase = prompts[i]
+    if (!promptCase) continue
 
-    // Run evaluations sequentially - fresh session per entry
-    for (let i = 0; i < prompts.length; i++) {
-      const promptCase = prompts[i]
-      if (!promptCase) continue
+    logProgress(`[${i + 1}/${prompts.length}] ${promptCase.id}: ${getInputPreview(promptCase.input)}...`, progress)
 
-      logProgress(`[${i + 1}/${prompts.length}] ${promptCase.id}: ${getInputPreview(promptCase.input)}...`, progress)
+    const startTime = Date.now()
+    let result: CaptureResult
 
-      const startTime = Date.now()
-      let result: CaptureResult
+    try {
+      // Create fresh session for each entry (ensures isolation)
+      const sessionStart = Date.now()
+      const session = await sessions.create(workingDir)
+      const sessionCreation = Date.now() - sessionStart
+      logProgress(`  Session: ${session.id}`, progress)
 
-      try {
-        // Create fresh session for each entry (ensures isolation)
-        const sessionStart = Date.now()
-        const session = await client.createSession(sessionParams)
-        const sessionCreation = Date.now() - sessionStart
-        logProgress(`  Session: ${session.id}`, progress)
+      // Handle string or array input
+      const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
+      const turnCount = inputs.length
 
-        // Handle string or array input
-        const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
-        const turnCount = inputs.length
+      // Collect all updates from all turns
+      const allUpdates: ParsedUpdate[] = []
+      let lastExitInfo: ProcessExitInfo | undefined
+      let lastOutput = ''
 
-        // Collect all updates from all turns
-        const allUpdates: SessionNotification[] = []
+      // TODO: Per-prompt timeout from promptCase.timeout is documented but not yet implemented
+      // The session manager would need to accept timeout per-call to support this
 
-        // Execute each turn sequentially in the same session
-        for (const turnInput of inputs) {
-          const prompt = createPrompt(turnInput)
-          const { updates } = await client.promptSync(session.id, prompt)
-          allUpdates.push(...updates)
-        }
-
-        const endTime = Date.now()
-        const trajectory = extractTrajectory(allUpdates, startTime)
-        const output = extractOutput(trajectory)
-        const toolErrors = hasToolErrors(trajectory)
-        const trajectoryRichness = detectTrajectoryRichness(trajectory)
-        const tokenCounts = extractTokenCounts(allUpdates)
-
-        result = {
-          id: promptCase.id,
-          input: promptCase.input, // Preserve original (string or array)
-          output,
-          ...(promptCase.hint && { hint: promptCase.hint }),
-          trajectory,
-          metadata: {
-            ...promptCase.metadata,
-            agent: agentCommand.join(' '),
-            trajectoryRichness,
-            turnCount,
-          },
-          timing: {
-            start: startTime,
-            end: endTime,
-            firstResponse: trajectory.length > 0 ? trajectory[0]?.timestamp : undefined,
-            sessionCreation,
-            total: endTime - startTime,
-            ...(tokenCounts.inputTokens !== undefined && { inputTokens: tokenCounts.inputTokens }),
-            ...(tokenCounts.outputTokens !== undefined && { outputTokens: tokenCounts.outputTokens }),
-          },
-          toolErrors,
-        }
-
-        // Apply grader if provided
-        if (grader) {
-          result.score = await grader({
-            input: promptCase.input,
-            output,
-            hint: promptCase.hint,
-            trajectory,
-          })
-        }
-      } catch (error) {
-        const endTime = Date.now()
-        const message = error instanceof Error ? error.message : String(error)
-        const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
-
-        result = {
-          id: promptCase.id,
-          input: promptCase.input,
-          output: '',
-          trajectory: [],
-          metadata: {
-            ...promptCase.metadata,
-            agent: agentCommand.join(' '),
-            trajectoryRichness: 'minimal' as TrajectoryRichness,
-            turnCount: inputs.length,
-          },
-          timing: {
-            start: startTime,
-            end: endTime,
-            sessionCreation: 0,
-            total: endTime - startTime,
-          },
-          toolErrors: true,
-          errors: [message],
-        }
+      // Execute each turn sequentially in the same session
+      for (const turnInput of inputs) {
+        const turnResult: PromptResult = await sessions.prompt(session.id, turnInput)
+        allUpdates.push(...turnResult.updates)
+        lastExitInfo = turnResult.exitInfo
+        lastOutput = turnResult.output
       }
 
-      results.push(result)
+      const endTime = Date.now()
+      const trajectory = extractTrajectory(allUpdates, startTime)
 
-      // Write result immediately
-      const formatted = JSON.stringify(result)
-      await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
-      isFirstOutput = false
+      // Use last turn's output or extract from trajectory
+      const output = lastOutput || extractOutput(trajectory)
+      const toolErrors = hasToolErrors(trajectory) || (lastExitInfo?.timedOut ?? false)
+      const trajectoryRichness = detectTrajectoryRichness(trajectory)
 
-      const statusIcon = result.toolErrors ? '!' : '✓'
-      logProgress(`  ${statusIcon} (${result.timing.total}ms)`, progress)
+      result = {
+        id: promptCase.id,
+        input: promptCase.input, // Preserve original (string or array)
+        output,
+        ...(promptCase.hint && { hint: promptCase.hint }),
+        trajectory,
+        metadata: {
+          ...promptCase.metadata,
+          agent: schema.name,
+          trajectoryRichness,
+          turnCount,
+          ...(lastExitInfo && {
+            exitCode: lastExitInfo.exitCode,
+            signal: lastExitInfo.signal,
+            timedOut: lastExitInfo.timedOut,
+          }),
+        },
+        timing: {
+          start: startTime,
+          end: endTime,
+          firstResponse: trajectory.length > 0 ? trajectory[0]?.timestamp : undefined,
+          sessionCreation,
+          total: endTime - startTime,
+        },
+        toolErrors,
+      }
+
+      // Apply grader if provided
+      if (grader) {
+        result.score = await grader({
+          input: promptCase.input,
+          output,
+          hint: promptCase.hint,
+          trajectory,
+        })
+      }
+
+      // Clean up session
+      sessions.destroy(session.id)
+    } catch (error) {
+      const endTime = Date.now()
+      const message = error instanceof Error ? error.message : String(error)
+      const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
+
+      result = {
+        id: promptCase.id,
+        input: promptCase.input,
+        output: '',
+        trajectory: [],
+        metadata: {
+          ...promptCase.metadata,
+          agent: schema.name,
+          trajectoryRichness: 'minimal' as TrajectoryRichness,
+          turnCount: inputs.length,
+        },
+        timing: {
+          start: startTime,
+          end: endTime,
+          sessionCreation: 0,
+          total: endTime - startTime,
+        },
+        toolErrors: true,
+        errors: [message],
+      }
     }
-  } finally {
-    logProgress('Disconnecting...', progress)
-    await client.disconnect()
+
+    results.push(result)
+
+    // Write result immediately
+    const formatted = JSON.stringify(result)
+    await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
+    isFirstOutput = false
+
+    const statusIcon = result.toolErrors ? '!' : '✓'
+    const exitInfo = result.metadata?.timedOut
+      ? ' - TIMEOUT'
+      : result.metadata?.exitCode && result.metadata.exitCode !== 0
+        ? ` - exit ${result.metadata.exitCode}`
+        : ''
+    logProgress(`  ${statusIcon} (${result.timing.total}ms)${exitInfo}`, progress)
   }
 
   logProgress('Done!', progress)
@@ -451,12 +443,14 @@ export const capture = async (args: string[]): Promise<void> => {
   const { values, positionals } = parseArgs({
     args,
     options: {
+      schema: { type: 'string', short: 's' },
       output: { type: 'string', short: 'o' },
       cwd: { type: 'string', short: 'c' },
-      timeout: { type: 'string', short: 't', default: String(DEFAULT_HARNESS_TIMEOUT) },
+      timeout: { type: 'string', short: 't' },
       progress: { type: 'boolean', default: false },
       append: { type: 'boolean', default: false },
       grader: { type: 'string', short: 'g' },
+      debug: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h' },
     },
     allowPositionals: true,
@@ -465,38 +459,47 @@ export const capture = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness capture <prompts.jsonl> <command> [args...] [options]
+Usage: agent-eval-harness capture <prompts.jsonl> --schema <schema.json> [options]
 
 Arguments:
   prompts.jsonl     Input file with evaluation prompts
-  command [args]    ACP agent command to execute
 
 Options:
+  -s, --schema      Path to agent schema JSON file (required)
   -o, --output      Output file (default: stdout)
-  -c, --cwd         Working directory for agent (agents auto-discover MCP configs from here)
-  -t, --timeout     Request timeout in ms (default: ${DEFAULT_HARNESS_TIMEOUT})
+  -c, --cwd         Working directory for agent
+  -t, --timeout     Request timeout in ms (overrides schema default)
   --progress        Show progress to stderr
   --append          Append to output file instead of overwriting
   -g, --grader      Path to grader (.ts/.js module or executable script)
+  --debug           Enable debug mode (shows raw output, JSONPath matching)
   -h, --help        Show this help message
 
 Output Format:
   Full trajectory JSONL with toolErrors indicator.
-  Use 'acp-harness summarize' to derive compact views.
+  Use 'agent-eval-harness summarize' to derive compact views.
+
+Exit Info (in metadata):
+  exitCode      Process exit code (null if killed/timed out)
+  signal        Signal that killed process (if any)
+  timedOut      true if process was killed due to timeout
 
 Graders:
   TS/JS modules must export a 'grade' function.
   Executable scripts (Python, etc.) use stdin/stdout JSON protocol.
 
 Examples:
-  # Basic capture
-  acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+  # Basic capture with schema
+  agent-eval-harness capture prompts.jsonl --schema claude.json -o results.jsonl
 
   # With TypeScript grader
-  acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
+  agent-eval-harness capture prompts.jsonl -s claude.json --grader ./grader.ts -o results.jsonl
 
-  # With Python grader
-  acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+  # With debug mode
+  agent-eval-harness capture prompts.jsonl -s claude.json --debug -o results.jsonl
+
+  # With per-prompt timeout override (in prompts.jsonl):
+  {"id": "slow-task", "input": "...", "timeout": 180000}
 `)
     return
   }
@@ -507,10 +510,9 @@ Examples:
     process.exit(1)
   }
 
-  const agentCommand = positionals.slice(1)
-  if (agentCommand.length === 0) {
-    console.error('Error: ACP agent command is required')
-    console.error('Example: acp-harness capture prompts.jsonl bunx claude-code-acp')
+  if (!values.schema) {
+    console.error('Error: --schema is required')
+    console.error('Example: agent-eval-harness capture prompts.jsonl --schema ./claude.json')
     process.exit(1)
   }
 
@@ -527,12 +529,13 @@ Examples:
 
   await runCapture({
     promptsPath,
-    agentCommand,
+    schemaPath: values.schema,
     outputPath: values.output,
     cwd: values.cwd,
-    timeout: Number.parseInt(values.timeout ?? String(DEFAULT_HARNESS_TIMEOUT), 10),
+    timeout: values.timeout ? Number.parseInt(values.timeout, 10) : undefined,
     progress: values.progress ?? false,
     append: values.append ?? false,
     grader,
+    debug: values.debug ?? false,
   })
 }

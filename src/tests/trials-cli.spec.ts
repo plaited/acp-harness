@@ -9,24 +9,25 @@ describe('TrialsConfig configuration', () => {
   test('TrialsConfig type accepts valid configuration', () => {
     const config: TrialsConfig = {
       promptsPath: '/tmp/prompts.jsonl',
-      agentCommand: ['bunx', 'test-agent'],
+      schemaPath: './schemas/claude-headless.json',
       k: 5,
       outputPath: '/tmp/output.jsonl',
       cwd: '/tmp',
       timeout: 30000,
       progress: true,
       append: false,
+      debug: false,
     }
 
     expect(config.promptsPath).toBe('/tmp/prompts.jsonl')
-    expect(config.agentCommand).toEqual(['bunx', 'test-agent'])
+    expect(config.schemaPath).toBe('./schemas/claude-headless.json')
     expect(config.k).toBe(5)
   })
 
   test('TrialsConfig allows minimal configuration', () => {
     const config: TrialsConfig = {
       promptsPath: '/tmp/prompts.jsonl',
-      agentCommand: ['echo', 'test'],
+      schemaPath: './test-schema.json',
       k: 3,
     }
 
@@ -53,7 +54,7 @@ describe('trials CLI', () => {
     const stdout = await new Response(proc.stdout).text()
     await proc.exited
 
-    expect(stdout).toContain('Usage: acp-harness trials')
+    expect(stdout).toContain('Usage: agent-eval-harness trials')
     expect(stdout).toContain('prompts.jsonl')
     expect(stdout).toContain('-o, --output')
     expect(stdout).toContain('-k')
@@ -61,6 +62,7 @@ describe('trials CLI', () => {
     expect(stdout).toContain('-t, --timeout')
     expect(stdout).toContain('--progress')
     expect(stdout).toContain('-g, --grader')
+    expect(stdout).toContain('-s, --schema')
     expect(stdout).toContain('pass@k')
   })
 
@@ -77,7 +79,7 @@ describe('trials CLI', () => {
     expect(stderr).toContain('prompts.jsonl path is required')
   })
 
-  test('shows error for missing agent command', async () => {
+  test('shows error for missing schema argument', async () => {
     const proc = Bun.spawn(['bun', './bin/cli.ts', 'trials', '/tmp/prompts.jsonl'], {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -87,7 +89,7 @@ describe('trials CLI', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).not.toBe(0)
-    expect(stderr).toContain('ACP agent command is required')
+    expect(stderr).toContain('--schema is required')
   })
 })
 
@@ -105,7 +107,7 @@ describe('schemas CLI', () => {
     const stdout = await new Response(proc.stdout).text()
     await proc.exited
 
-    expect(stdout).toContain('Usage: acp-harness schemas')
+    expect(stdout).toContain('Usage: agent-eval-harness schemas')
     expect(stdout).toContain('-o, --output')
     expect(stdout).toContain('-j, --json')
     expect(stdout).toContain('-s, --split')

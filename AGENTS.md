@@ -26,14 +26,14 @@ ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.tes
 
 ### Package Overview
 
-`@plaited/acp-harness` is a CLI tool for capturing agent trajectories from ACP-compatible agents. It executes prompts, captures full trajectories (tools, thoughts, plans), and outputs structured JSONL for downstream scoring.
+`@plaited/agent-eval-harness` is a CLI tool for capturing agent trajectories from headless CLI agents. It executes prompts, captures full trajectories (tools, thoughts, plans), and outputs structured JSONL for downstream scoring.
 
 **CLI usage (with built-in headless adapter):**
 ```bash
 # Set API key and run capture with headless adapter (recommended)
 export ANTHROPIC_API_KEY=sk-...
-bunx @plaited/acp-harness capture prompts.jsonl \
-  bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json \
+bunx @plaited/agent-eval-harness capture prompts.jsonl \
+  --schema .claude/skills/headless-adapters/schemas/claude-headless.json \
   -o results.jsonl
 ```
 
@@ -53,9 +53,9 @@ bunx @plaited/acp-harness capture prompts.jsonl \
 
 This project provides two AI agent skills in `.claude/skills/`:
 
-### ACP Harness (`acp-harness`)
+### Agent Eval Harness (`agent-eval-harness`)
 
-CLI tool for capturing agent trajectories from ACP-compatible agents.
+CLI tool for capturing agent trajectories from headless CLI agents.
 
 **Commands:** `capture`, `trials`, `summarize`, `calibrate`, `validate-refs`, `balance`, `schemas`
 
@@ -64,28 +64,27 @@ CLI tool for capturing agent trajectories from ACP-compatible agents.
 - Generating training data (SFT/DPO) with full context
 - Building regression test fixtures for agent behavior
 
-See `.claude/skills/acp-harness/SKILL.md` for complete documentation.
+See `.claude/skills/agent-eval-harness/SKILL.md` for complete documentation.
 
-### ACP Adapters (`acp-adapters`)
+### Headless Adapters (`headless-adapters`)
 
-Discover, create, and validate ACP adapters for agent integration.
+Discover, create, and validate headless adapters for agent integration.
 
-**Commands:** `headless`, `adapter:scaffold`, `adapter:check`
+**Commands:** `headless`
 
 **Use cases:**
 - Finding existing adapters for your agent
 - Wrapping headless CLI agents with schema-driven adapter
-- Building custom ACP adapters from scratch
-- Validating adapter ACP compliance
+- Creating new schemas for CLI agents
 
-See `.claude/skills/acp-adapters/SKILL.md` for complete documentation.
+See `.claude/skills/headless-adapters/SKILL.md` for complete documentation.
 
 ### Installing Skills
 
 Install skills for AI coding agents:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project acp-harness
+curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project agent-eval-harness
 ```
 
 Replace `<agent-name>` with: `claude`, `cursor`, `copilot`, `opencode`, `amp`, `goose`, `factory`

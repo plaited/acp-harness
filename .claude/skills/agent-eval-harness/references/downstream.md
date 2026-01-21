@@ -21,7 +21,7 @@ Use `summarize` command for quick jq analysis:
 
 ```bash
 # First derive summary
-acp-harness summarize results.jsonl -o summary.jsonl
+agent-eval-harness summarize results.jsonl -o summary.jsonl
 
 # Calculate average duration
 cat summary.jsonl | jq -s 'map(.duration) | add / length'
@@ -172,7 +172,7 @@ Use the `--grader` flag to add scoring to capture results. The harness supports 
 
 ```typescript
 // my-grader.ts
-import type { Grader } from '@plaited/acp-harness/schemas'
+import type { Grader } from '@plaited/agent-eval-harness/schemas'
 
 export const grade: Grader = async ({ input, output, hint, trajectory }) => {
   const pass = output.toLowerCase().includes(hint?.toLowerCase() ?? '')
@@ -185,7 +185,7 @@ export const grade: Grader = async ({ input, output, hint, trajectory }) => {
 ```
 
 ```bash
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
+agent-eval-harness capture prompts.jsonl bunx claude-code-acp --grader ./my-grader.ts -o results.jsonl
 ```
 
 ### Python Grader
@@ -228,7 +228,7 @@ print(json.dumps({
 
 ```bash
 chmod +x ./grader.py
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+agent-eval-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
 ```
 
 ### Detection Logic
@@ -301,7 +301,7 @@ Use markdown summary for smaller context:
 import Anthropic from '@anthropic-ai/sdk'
 
 // Generate markdown summary first
-await Bun.$`acp-harness summarize results.jsonl --markdown -o results.md`
+await Bun.$`agent-eval-harness summarize results.jsonl --markdown -o results.md`
 
 const client = new Anthropic()
 const markdown = await Bun.file('results.md').text()
@@ -376,21 +376,21 @@ jobs:
         run: npm install -g @zed-industries/claude-code-acp
 
       - name: Install dependencies
-        run: bun add @plaited/acp-harness
+        run: bun add @plaited/agent-eval-harness
 
       - name: Run harness
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          bunx @plaited/acp-harness capture prompts.jsonl \
+          bunx @plaited/agent-eval-harness capture prompts.jsonl \
             bunx claude-code-acp \
             --progress \
             -o results.jsonl
 
       - name: Generate summary
         run: |
-          bunx @plaited/acp-harness summarize results.jsonl -o summary.jsonl
-          bunx @plaited/acp-harness summarize results.jsonl --markdown -o results.md
+          bunx @plaited/agent-eval-harness summarize results.jsonl -o summary.jsonl
+          bunx @plaited/agent-eval-harness summarize results.jsonl --markdown -o results.md
 
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -408,8 +408,8 @@ Combine multiple runs:
 
 ```bash
 # Append mode during runs
-acp-harness capture prompts-1.jsonl bunx claude-code-acp --append -o combined.jsonl
-acp-harness capture prompts-2.jsonl bunx claude-code-acp --append -o combined.jsonl
+agent-eval-harness capture prompts-1.jsonl bunx claude-code-acp --append -o combined.jsonl
+agent-eval-harness capture prompts-2.jsonl bunx claude-code-acp --append -o combined.jsonl
 
 # Merge separate files
 cat run1.jsonl run2.jsonl run3.jsonl > combined.jsonl
@@ -422,7 +422,7 @@ cat run1.jsonl run2.jsonl run3.jsonl > combined.jsonl
 Use the `trials` command to measure pass@k/pass^k:
 
 ```bash
-acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+agent-eval-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
 ```
 
 ```typescript

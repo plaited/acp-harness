@@ -1,5 +1,5 @@
 /**
- * Unified Zod schemas and types for the ACP harness.
+ * Unified Zod schemas and types for the agent eval harness.
  *
  * @remarks
  * This module follows a schema-first approach where Zod schemas are the
@@ -7,35 +7,20 @@
  *
  * **Exports:**
  * - Harness schemas: PromptCaseSchema, GraderResultSchema, CaptureResultSchema, etc.
- * - JSON-RPC schemas: JsonRpcRequestSchema, JsonRpcResponseSchema, etc.
- * - ACP SDK type schemas: SessionNotificationSchema, RequestPermissionRequestSchema
+ * - JSON-RPC schemas: JsonRpcRequestSchema, JsonRpcResponseSchema, etc. (for headless adapter)
  * - All inferred types via `z.infer<>`
  *
  * **JSON Schema generation (Zod 4):**
  * ```typescript
  * import { z } from 'zod'
- * import { CaptureResultSchema } from '@plaited/acp-harness/schemas'
+ * import { CaptureResultSchema } from '@plaited/agent-eval-harness/schemas'
  * const jsonSchema = z.toJSONSchema(CaptureResultSchema)
  * ```
  *
  * @packageDocumentation
  */
 
-import type { RequestPermissionRequest, SessionId, SessionNotification } from '@agentclientprotocol/sdk'
 import { z } from 'zod'
-
-// ============================================================================
-// Internal Type Utilities
-// ============================================================================
-
-/** Precise type detection beyond typeof operator */
-const trueTypeOf = (obj?: unknown): string => Object.prototype.toString.call(obj).slice(8, -1).toLowerCase()
-
-/** Type guard for precise type checking with TypeScript narrowing */
-const isTypeOf = <T>(obj: unknown, type: string): obj is T => trueTypeOf(obj) === type
-
-/** Type guard for object shape validation */
-const isRecord = (val: unknown): val is Record<string, unknown> => isTypeOf<Record<string, unknown>>(val, 'object')
 
 // ============================================================================
 // Session Types
@@ -45,7 +30,7 @@ const isRecord = (val: unknown): val is Record<string, unknown> => isTypeOf<Reco
  * Session schema for session creation responses.
  */
 export const SessionSchema = z.object({
-  id: z.string() as z.ZodType<SessionId>,
+  id: z.string(),
   _meta: z.record(z.string(), z.unknown()).nullish(),
 })
 
@@ -53,7 +38,7 @@ export const SessionSchema = z.object({
 export type Session = z.infer<typeof SessionSchema>
 
 // ============================================================================
-// JSON-RPC 2.0 Schemas
+// JSON-RPC 2.0 Schemas (for headless adapter)
 // ============================================================================
 
 /** JSON-RPC version literal */
@@ -72,7 +57,6 @@ const RequestIdSchema = z.union([z.string(), z.number()])
  * - `-32601`: Method not found
  * - `-32602`: Invalid params
  * - `-32603`: Internal error
- * - `-32800`: Request cancelled (ACP extension)
  */
 export const JsonRpcErrorSchema = z.object({
   code: z.number(),
@@ -146,33 +130,6 @@ export const JsonRpcMessageSchema = z.union([JsonRpcRequestSchema, JsonRpcNotifi
 
 /** Union of all JSON-RPC message types */
 export type JsonRpcMessage<T = unknown> = JsonRpcRequest<T> | JsonRpcNotification<T> | JsonRpcResponse<T>
-
-// ============================================================================
-// ACP SDK Type Schemas (Custom Validators)
-// ============================================================================
-
-/**
- * Schema for session update notifications.
- *
- * @remarks
- * Validates `sessionId` and `update` fields used in notification handling.
- * Uses z.custom() to validate SDK types at runtime while keeping SDK types
- * as the source of truth.
- */
-export const SessionNotificationSchema = z.custom<SessionNotification>(
-  (val): val is SessionNotification =>
-    isRecord(val) && 'sessionId' in val && typeof val.sessionId === 'string' && 'update' in val && isRecord(val.update),
-)
-
-/**
- * Schema for permission requests from agent.
- *
- * @remarks
- * Validates `options` array used in permission handling.
- */
-export const RequestPermissionRequestSchema = z.custom<RequestPermissionRequest>(
-  (val): val is RequestPermissionRequest => isRecord(val) && 'options' in val && Array.isArray(val.options),
-)
 
 // ============================================================================
 // MCP Server Configuration Schemas
@@ -296,24 +253,6 @@ export const ToolInputSchema = z
 
 /** Tool input type */
 export type ToolInput = z.infer<typeof ToolInputSchema>
-
-/**
- * Token usage schema for adapter-specific usage data.
- *
- * @remarks
- * ACP SDK's SessionNotification doesn't declare a 'usage' field, but adapters
- * like Claude Code extend responses with token counts at runtime. This schema
- * provides runtime validation for that extension.
- */
-export const TokenUsageSchema = z
-  .object({
-    inputTokens: z.number().optional(),
-    outputTokens: z.number().optional(),
-  })
-  .passthrough()
-
-/** Token usage type */
-export type TokenUsage = z.infer<typeof TokenUsageSchema>
 
 /** Thought trajectory step */
 export const ThoughtStepSchema = z.object({

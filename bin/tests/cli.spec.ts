@@ -3,11 +3,11 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 /**
- * Tests for the acp-harness CLI.
+ * Tests for the agent-eval-harness CLI.
  *
  * @remarks
  * Tests CLI argument parsing, help output, and output format schemas.
- * Integration tests requiring an actual ACP agent are in *.docker.ts files.
+ * Integration tests requiring an actual CLI agent are in *.docker.ts files.
  */
 
 const CLI_PATH = join(import.meta.dir, '..', 'cli.ts')
@@ -26,7 +26,7 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('acp-harness')
+    expect(stdout).toContain('agent-eval-harness')
     expect(stdout).toContain('Commands:')
     expect(stdout).toContain('capture')
     expect(stdout).toContain('trials')
@@ -42,7 +42,7 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('acp-harness')
+    expect(stdout).toContain('agent-eval-harness')
   })
 
   test('shows help when no arguments provided', async () => {
@@ -54,7 +54,7 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(0) // Exits cleanly when showing help
-    expect(stdout).toContain('acp-harness')
+    expect(stdout).toContain('agent-eval-harness')
   })
 
   test('help shows example commands', async () => {
@@ -64,7 +64,7 @@ describe('CLI invocation', () => {
     })
     const stdout = await new Response(proc.stdout).text()
 
-    expect(stdout).toContain('bunx claude-code-acp')
+    expect(stdout).toContain('--schema')
     expect(stdout).toContain('prompts.jsonl')
     expect(stdout).toContain('results.jsonl')
   })
@@ -84,8 +84,8 @@ describe('CLI invocation', () => {
     expect(stdout).toContain('schemas')
   })
 
-  test('fails with non-existent prompts file', async () => {
-    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', 'nonexistent.jsonl', 'bunx', 'claude-code-acp'], {
+  test('fails with non-existent schema file', async () => {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', 'prompts.jsonl', '--schema', 'nonexistent.json'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -93,10 +93,10 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).not.toBe(0)
-    expect(stderr).toContain('no such file or directory')
+    expect(stderr).toContain('Schema file not found')
   })
 
-  test('fails when no agent command provided', async () => {
+  test('fails when no schema provided', async () => {
     const tmpFile = `/tmp/test-prompts-${Date.now()}.jsonl`
     await Bun.write(tmpFile, '{"id":"test-001","input":"test"}\n')
 
@@ -108,7 +108,7 @@ describe('CLI invocation', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).toBe(1)
-    expect(stderr).toContain('ACP agent command is required')
+    expect(stderr).toContain('--schema is required')
   })
 
   test('fails with unknown command', async () => {
@@ -488,11 +488,11 @@ describe('MCP server config parsing', () => {
 // ============================================================================
 
 describe('error handling', () => {
-  test('fails with invalid JSONL format', async () => {
+  test('fails when schema file does not exist', async () => {
     const tmpFile = `/tmp/invalid-${Date.now()}.jsonl`
-    await Bun.write(tmpFile, '{invalid json}\n')
+    await Bun.write(tmpFile, '{"id": "t1", "input": "test"}\n')
 
-    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', tmpFile, 'bunx', 'claude-code-acp'], {
+    const proc = Bun.spawn(['bun', CLI_PATH, 'capture', tmpFile, '--schema', 'nonexistent-schema.json'], {
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -500,7 +500,7 @@ describe('error handling', () => {
     const exitCode = await proc.exited
 
     expect(exitCode).not.toBe(0)
-    expect(stderr).toContain('Invalid prompt at line 1')
+    expect(stderr).toContain('Schema file not found')
   })
 
   test('capture command requires prompts path', async () => {

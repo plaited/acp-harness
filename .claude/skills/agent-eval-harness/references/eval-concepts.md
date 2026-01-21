@@ -55,7 +55,7 @@ Run a prompt 5 times, 3 pass (60% raw pass rate):
 
 ```bash
 # Run many trials to assess capability
-acp-harness trials new-prompts.jsonl bunx agent -k 10 --grader ./grader.ts -o capability.jsonl
+agent-eval-harness trials new-prompts.jsonl bunx agent -k 10 --grader ./grader.ts -o capability.jsonl
 
 # Analyze results
 cat capability.jsonl | jq 'select(.passAtK > 0.9) | {id, passAtK}'
@@ -70,7 +70,7 @@ Questions answered:
 
 ```bash
 # Run fewer trials for known-good tasks
-acp-harness trials regression-suite.jsonl bunx agent -k 3 --grader ./grader.ts -o regression.jsonl
+agent-eval-harness trials regression-suite.jsonl bunx agent -k 3 --grader ./grader.ts -o regression.jsonl
 
 # Fail CI if reliability drops
 cat regression.jsonl | jq -e 'all(.passExpK > 0.8)'
@@ -118,7 +118,7 @@ Week 3: 60% grader pass → 80% actually correct (grader rejected 20% valid)
 
 ```bash
 # Sample 10 failures for human review
-acp-harness calibrate results.jsonl --sample 10 -o calibration.md
+agent-eval-harness calibrate results.jsonl --sample 10 -o calibration.md
 ```
 
 Review the markdown output and label each sample:
@@ -171,7 +171,7 @@ Reference solutions prove a task is solvable before blaming the agent.
 
 ```bash
 # Check that reference solutions pass your grader
-acp-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
+agent-eval-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
 
 # If references fail, your grader or task is broken
 cat validation.jsonl | jq 'select(.pass == false)'
@@ -199,7 +199,7 @@ An eval with only "make X work" misses "don't break Y".
 ### Using the Balance Command
 
 ```bash
-acp-harness balance prompts.jsonl -o balance.json
+agent-eval-harness balance prompts.jsonl -o balance.json
 ```
 
 Analyzes:

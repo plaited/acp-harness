@@ -195,7 +195,7 @@ export const schemasCli = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness schemas [schema-name] [options]
+Usage: agent-eval-harness schemas [schema-name] [options]
 
 Arguments:
   schema-name       Specific schema to export (optional)
@@ -214,17 +214,17 @@ Available Schemas:
 
 Examples:
   # List available schemas
-  acp-harness schemas --list
+  agent-eval-harness schemas --list
 
   # Export all schemas as single JSON file
-  acp-harness schemas --json -o schemas.json
+  agent-eval-harness schemas --json -o schemas.json
 
   # Export specific schema
-  acp-harness schemas CaptureResult --json
-  acp-harness schemas TrialResult --json -o trial-schema.json
+  agent-eval-harness schemas CaptureResult --json
+  agent-eval-harness schemas TrialResult --json -o trial-schema.json
 
   # Export all schemas as separate files
-  acp-harness schemas --json --split -o schemas/
+  agent-eval-harness schemas --json --split -o schemas/
 `)
     return
   }

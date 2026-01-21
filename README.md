@@ -78,12 +78,6 @@ curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/insta
 
 Replace `<agent-name>` with your agent: `claude`, `cursor`, `copilot`, `opencode`, `amp`, `goose`, `factory`
 
-**Update skills:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- update --agent <agent-name> --project acp-harness
-```
-
 ### Available Skills
 
 #### ACP Harness

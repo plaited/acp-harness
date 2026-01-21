@@ -1,20 +1,20 @@
 ---
-name: acp-harness
-description: CLI tool for capturing agent trajectories. Execute prompts against ACP-compatible agents, capture full trajectories (tools, thoughts, plans), and output structured JSONL for downstream scoring.
+name: agent-eval-harness
+description: CLI tool for capturing agent trajectories. Execute prompts against headless CLI agents via schema-driven adapters, capture full trajectories (tools, thoughts, plans), and output structured JSONL for downstream scoring.
 compatibility: Bun >= 1.2.9
 ---
 
-# ACP Harness
+# Agent Eval Harness
 
 ## Purpose
 
-CLI tool for capturing trajectories from ACP-compatible agents, optimized for TypeScript/JavaScript projects using Bun.
+CLI tool for capturing trajectories from headless CLI agents, optimized for TypeScript/JavaScript projects using Bun.
 
 **The harness captures. You score.**
 
 | Harness Provides | You Provide |
 |------------------|-------------|
-| Prompt execution against ACP agents | Scoring logic (Braintrust, custom scripts) |
+| Prompt execution via headless adapters | Scoring logic (Braintrust, custom scripts) |
 | Full trajectory capture (thoughts, tools, plans) | Pass/fail determination via graders |
 | Structured JSONL output | LLM-as-judge prompts |
 | Reproducible execution environment | CI integration, golden file comparison |
@@ -29,10 +29,10 @@ CLI tool for capturing trajectories from ACP-compatible agents, optimized for Ty
 
 ```bash
 # Run without installing (recommended)
-bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+bunx @plaited/agent-eval-harness capture prompts.jsonl --schema ./claude.json -o results.jsonl
 
 # Or install as project dependency
-bun add @plaited/acp-harness
+bun add @plaited/agent-eval-harness
 ```
 
 ## Core Principle: Capture Once, Derive Many Views
@@ -40,7 +40,7 @@ bun add @plaited/acp-harness
 ```mermaid
 flowchart LR
     Prompts["prompts.jsonl"] --> Capture["capture/trials"]
-    Agent["ACP Agent"] --> Capture
+    Schema["headless schema"] --> Capture
     Capture --> Results["results.jsonl (full trajectory)"]
     Results --> Summarize["summarize"]
     Results --> Calibrate["calibrate"]
@@ -58,8 +58,8 @@ flowchart LR
 
 | Command | Input | Output | Purpose |
 |---------|-------|--------|---------|
-| `capture` | prompts.jsonl + agent | results.jsonl | Trajectory capture (full) |
-| `trials` | prompts.jsonl + agent | trials.jsonl | Multi-run + optional metrics |
+| `capture` | prompts.jsonl + schema | results.jsonl | Trajectory capture (full) |
+| `trials` | prompts.jsonl + schema | trials.jsonl | Multi-run + optional metrics |
 | `summarize` | results.jsonl | summary.jsonl or .md | Derive compact views |
 | `calibrate` | results.jsonl | calibration.md | Sample failures for review |
 | `validate-refs` | prompts.jsonl | validation.jsonl | Check reference solutions |
@@ -73,7 +73,7 @@ All commands support optional `--grader ./grader.ts` for scoring.
 ### Basic Usage
 
 ```bash
-bunx @plaited/acp-harness capture <prompts.jsonl> <command> [args...] [options]
+bunx @plaited/agent-eval-harness capture <prompts.jsonl> --schema <schema.json> [options]
 ```
 
 ### Arguments
@@ -81,25 +81,26 @@ bunx @plaited/acp-harness capture <prompts.jsonl> <command> [args...] [options]
 | Argument/Flag | Description | Default |
 |------|-------------|---------|
 | `prompts.jsonl` | Input file with prompts to execute | Required |
-| `command [args]` | ACP agent command (e.g., `bunx claude-code-acp`) | Required |
+| `-s, --schema` | Path to headless adapter schema | Required |
 | `-o, --output` | Output file/path | stdout |
-| `-c, --cwd` | Working directory for agent (agents auto-discover MCP configs from here) | current |
+| `-c, --cwd` | Working directory for agent | current |
 | `-t, --timeout` | Request timeout in ms | `60000` |
 | `--progress` | Show progress to stderr | false |
 | `--append` | Append to output file | false |
 | `-g, --grader` | Path to grader module | none |
+| `--debug` | Show detailed CLI output for debugging | false |
 
 ### Examples
 
 ```bash
 # Basic capture
-bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+bunx @plaited/agent-eval-harness capture prompts.jsonl --schema ./claude.json -o results.jsonl
 
 # Using a local adapter script
-bunx @plaited/acp-harness capture prompts.jsonl bun ./my-adapter.ts -o results.jsonl
+bunx @plaited/agent-eval-harness capture prompts.jsonl bun ./my-adapter.ts -o results.jsonl
 
 # With grader (adds score to each result)
-bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
+bunx @plaited/agent-eval-harness capture prompts.jsonl --schema ./claude.json --grader ./grader.ts -o results.jsonl
 ```
 
 ## Trials Command
@@ -108,10 +109,10 @@ Run each prompt multiple times for pass@k/pass^k analysis.
 
 ```bash
 # Capture only (no grader)
-bunx @plaited/acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 -o trials.jsonl
+bunx @plaited/agent-eval-harness trials prompts.jsonl --schema ./claude.json -k 5 -o trials.jsonl
 
 # With grader (computes pass@k, pass^k)
-bunx @plaited/acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+bunx @plaited/agent-eval-harness trials prompts.jsonl --schema ./claude.json -k 5 --grader ./grader.ts -o trials.jsonl
 ```
 
 ### Output
@@ -132,10 +133,10 @@ Derive compact views from full trajectory results.
 
 ```bash
 # Summary JSONL (for jq analysis)
-bunx @plaited/acp-harness summarize results.jsonl -o summary.jsonl
+bunx @plaited/agent-eval-harness summarize results.jsonl -o summary.jsonl
 
 # Markdown (for LLM-as-judge)
-bunx @plaited/acp-harness summarize results.jsonl --markdown -o results.md
+bunx @plaited/agent-eval-harness summarize results.jsonl --markdown -o results.md
 ```
 
 ## Calibrate Command
@@ -144,10 +145,10 @@ Sample failures for grader review. Calibration helps you distinguish between **a
 
 ```bash
 # Sample failures for human review
-bunx @plaited/acp-harness calibrate results.jsonl --sample 10 -o calibration.md
+bunx @plaited/agent-eval-harness calibrate results.jsonl --sample 10 -o calibration.md
 
 # Re-score with different grader to compare
-bunx @plaited/acp-harness calibrate results.jsonl --grader ./loose-grader.ts --sample 10 -o comparison.md
+bunx @plaited/agent-eval-harness calibrate results.jsonl --grader ./loose-grader.ts --sample 10 -o comparison.md
 ```
 
 See [eval-concepts.md](references/eval-concepts.md#grader-calibration) for why calibration matters.
@@ -158,7 +159,7 @@ Check that reference solutions pass your grader before evaluating agents.
 
 ```bash
 # Validate reference solutions
-bunx @plaited/acp-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
+bunx @plaited/agent-eval-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
 
 # Check for failures
 cat validation.jsonl | jq 'select(.pass == false)'
@@ -193,10 +194,10 @@ Analyze test set coverage to ensure balanced evaluation.
 
 ```bash
 # Analyze prompt distribution
-bunx @plaited/acp-harness balance prompts.jsonl -o balance.json
+bunx @plaited/agent-eval-harness balance prompts.jsonl -o balance.json
 
 # Pretty print
-bunx @plaited/acp-harness balance prompts.jsonl | jq .
+bunx @plaited/agent-eval-harness balance prompts.jsonl | jq .
 ```
 
 ### Why Use This?
@@ -241,15 +242,15 @@ Export JSON schemas for non-TypeScript tools.
 
 ```bash
 # List available schemas
-bunx @plaited/acp-harness schemas
+bunx @plaited/agent-eval-harness schemas
 
 # Export all schemas as JSON
-bunx @plaited/acp-harness schemas --json -o schemas.json
+bunx @plaited/agent-eval-harness schemas --json -o schemas.json
 
 # Export specific schema
-bunx @plaited/acp-harness schemas CaptureResult --json
-bunx @plaited/acp-harness schemas TrialResult --json
-bunx @plaited/acp-harness schemas GraderResult --json
+bunx @plaited/agent-eval-harness schemas CaptureResult --json
+bunx @plaited/agent-eval-harness schemas TrialResult --json
+bunx @plaited/agent-eval-harness schemas GraderResult --json
 ```
 
 ### Available Schemas
@@ -269,7 +270,7 @@ Export schemas for validation in Python, Go, etc.:
 
 ```bash
 # Export all schemas
-bunx @plaited/acp-harness schemas --json -o schemas.json
+bunx @plaited/agent-eval-harness schemas --json -o schemas.json
 
 # Use in Python with jsonschema
 python -c "
@@ -295,7 +296,7 @@ Graders provide semantic pass/fail scoring for captured trajectories. The harnes
 
 ```typescript
 // my-grader.ts
-import type { Grader } from '@plaited/acp-harness/schemas'
+import type { Grader } from '@plaited/agent-eval-harness/schemas'
 
 export const grade: Grader = async ({ input, output, hint, trajectory }) => {
   const pass = output.toLowerCase().includes(hint?.toLowerCase() ?? '')
@@ -331,7 +332,7 @@ print(json.dumps({
 
 ```bash
 chmod +x ./grader.py
-bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py -o results.jsonl
+bunx @plaited/agent-eval-harness capture prompts.jsonl --schema ./claude.json --grader ./grader.py -o results.jsonl
 ```
 
 See [graders.md](references/graders.md) for complete polyglot grader documentation including shell scripts and LLM-as-judge patterns.
@@ -375,7 +376,7 @@ Full trajectory JSONL (always):
   ],
   "metadata": {
     "category": "search",
-    "agent": "bunx claude-code-acp",
+    "agent": "--schema ./claude.json",
     "trajectoryRichness": "full",
     "turnCount": 1
   },
@@ -413,7 +414,7 @@ Full trajectory JSONL (always):
 Consumers can import Zod schemas directly:
 
 ```typescript
-import { CaptureResultSchema, TrialResultSchema } from '@plaited/acp-harness/schemas'
+import { CaptureResultSchema, TrialResultSchema } from '@plaited/agent-eval-harness/schemas'
 
 // Validate external data
 const result = CaptureResultSchema.parse(jsonData)
@@ -426,8 +427,8 @@ const jsonSchema = z.toJSONSchema(CaptureResultSchema)
 Or export JSON schemas for non-TypeScript tools:
 
 ```bash
-bunx @plaited/acp-harness schemas --json -o schemas.json
-bunx @plaited/acp-harness schemas CaptureResult --json
+bunx @plaited/agent-eval-harness schemas --json -o schemas.json
+bunx @plaited/agent-eval-harness schemas CaptureResult --json
 ```
 
 ## Execution Environment
@@ -465,13 +466,13 @@ Run with the headless adapter:
 
 ```bash
 # Using Claude Code via headless adapter
-bunx @plaited/acp-harness capture multi-turn.jsonl \
-  bunx @plaited/acp-harness headless --schema ./claude-headless.json \
+bunx @plaited/agent-eval-harness capture multi-turn.jsonl \
+  bunx @plaited/agent-eval-harness headless --schema ./claude-headless.json \
   -o results.jsonl
 
 # Using Gemini CLI via headless adapter
-GEMINI_API_KEY=... bunx @plaited/acp-harness capture multi-turn.jsonl \
-  bunx @plaited/acp-harness headless --schema ./gemini-headless.json \
+GEMINI_API_KEY=... bunx @plaited/agent-eval-harness capture multi-turn.jsonl \
+  bunx @plaited/agent-eval-harness headless --schema ./gemini-headless.json \
   -o results.jsonl
 ```
 
@@ -493,7 +494,7 @@ cat results.jsonl | jq 'select(.metadata.category == "ui")'
 cat results.jsonl | jq -s 'map(.trajectory | map(select(.type == "tool_call")) | length) | add'
 
 # Summarize for quick analysis
-bunx @plaited/acp-harness summarize results.jsonl -o summary.jsonl
+bunx @plaited/agent-eval-harness summarize results.jsonl -o summary.jsonl
 ```
 
 See [downstream.md](references/downstream.md) for integration patterns with Braintrust, Gemini, and custom scorers.
@@ -502,7 +503,7 @@ See [downstream.md](references/downstream.md) for integration patterns with Brai
 
 | Resource | Description |
 |----------|-------------|
-| `bunx @plaited/acp-harness` | CLI help |
+| `bunx @plaited/agent-eval-harness` | CLI help |
 | [output-formats.md](references/output-formats.md) | JSONL schemas, command details |
 | [downstream.md](references/downstream.md) | Integration patterns (Braintrust, jq, custom scorers) |
 | [graders.md](references/graders.md) | Polyglot grader documentation (TypeScript, Python, shell) |
@@ -511,5 +512,4 @@ See [downstream.md](references/downstream.md) for integration patterns with Brai
 
 ## Related
 
-- **[@agentclientprotocol/sdk](https://www.npmjs.com/package/@agentclientprotocol/sdk)** - ACP SDK for programmatic access
-- **[@zed-industries/claude-code-acp](https://www.npmjs.com/package/@zed-industries/claude-code-acp)** - Claude Code ACP adapter
+- **[headless-adapters skill](../headless-adapters/SKILL.md)** - Schema-driven adapters for headless CLI agents

@@ -86,7 +86,7 @@ describe('HeadlessAdapterSchema', () => {
   })
 
   describe('validates schema files from disk', () => {
-    const schemasDir = '.claude/skills/acp-adapters/schemas'
+    const schemasDir = '.claude/skills/headless-adapters/schemas'
 
     test('validates claude-headless.json from disk', async () => {
       const content = await Bun.file(`${schemasDir}/claude-headless.json`).json()
@@ -178,8 +178,8 @@ describe('HeadlessAdapterSchema', () => {
       expect(result.success).toBe(false)
     })
 
-    test('rejects wrong version', () => {
-      const invalid = { ...validClaudeSchema, version: 2 }
+    test('rejects unsupported version', () => {
+      const invalid = { ...validClaudeSchema, version: 3 }
       const result = HeadlessAdapterSchema.safeParse(invalid)
       expect(result.success).toBe(false)
     })

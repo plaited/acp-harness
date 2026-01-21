@@ -1,10 +1,10 @@
 ---
-name: acp-adapters
-description: Discover, create, and validate ACP adapters for agent integration. Includes scaffolding tools and compliance testing for the Agent Client Protocol.
+name: headless-adapters
+description: Discover, create, and validate headless adapters for agent integration. Includes scaffolding tools and compliance testing for the Agent Client Protocol.
 compatibility: Bun >= 1.2.9
 ---
 
-# ACP Adapters
+# Headless Adapters
 
 ## Purpose
 
@@ -13,7 +13,6 @@ Schema-driven adapter for headless CLI agents. **No code required** - just defin
 | Use Case | Tool |
 |----------|------|
 | Wrap headless CLI agent | `headless` command |
-| Verify implementation | `adapter:check` command |
 | Create new schemas | [Schema Creation Guide](references/schema-creation-guide.md) |
 
 ## Quick Start
@@ -21,21 +20,17 @@ Schema-driven adapter for headless CLI agents. **No code required** - just defin
 1. **Check if a schema exists** in [schemas/](schemas/)
 2. **Run the adapter:**
    ```bash
-   ANTHROPIC_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json
-   ```
-3. **Validate compliance:**
-   ```bash
-   bunx @plaited/acp-harness adapter:check bunx @plaited/acp-harness headless --schema ./my-schema.json
+   ANTHROPIC_API_KEY=... bunx @plaited/agent-eval-harness headless --schema .claude/skills/headless-adapters/schemas/claude-headless.json
    ```
 
 ## CLI Commands
 
 ### headless
 
-Schema-driven ACP adapter for ANY headless CLI agent.
+Schema-driven adapter for ANY headless CLI agent.
 
 ```bash
-bunx @plaited/acp-harness headless --schema <path>
+bunx @plaited/agent-eval-harness headless --schema <path>
 ```
 
 **Options:**
@@ -82,45 +77,18 @@ Both modes support multi-turn conversations. Send multiple prompts to the same s
 
 ```typescript
 // Create one session, send multiple prompts
-const session = await client.createSession({ cwd: PROJECT_ROOT })
+const session = await manager.createSession({ cwd: PROJECT_ROOT })
 
 // Turn 1
-const { updates: turn1 } = await client.promptSync(session.id, createPrompt('Remember: 42'))
+const turn1 = await manager.prompt(session.id, 'Remember: 42')
 
 // Turn 2 - context is maintained
-const { updates: turn2 } = await client.promptSync(session.id, createPrompt('What number?'))
+const turn2 = await manager.prompt(session.id, 'What number?')
 ```
 
 How context is preserved:
 - **stream mode:** Process stays alive, CLI maintains internal state
 - **iterative mode:** Adapter builds history using `historyTemplate` from schema
-
----
-
-### adapter:check
-
-Validate that an adapter implements the ACP protocol correctly.
-
-```bash
-bunx @plaited/acp-harness adapter:check <command> [args...]
-```
-
-**Options:**
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--timeout` | Timeout for each check in ms | `5000` |
-| `--verbose` | Show detailed protocol messages | false |
-
-**Checks Performed:**
-
-| Check | Description |
-|-------|-------------|
-| `spawn` | Adapter can be launched as subprocess |
-| `initialize` | Responds to initialize with valid `agentCapabilities` |
-| `session/new` | Creates session and returns `sessionId` |
-| `session/prompt` | Accepts prompt and emits `session/update` notifications |
-| `session/cancel` | Accepts cancel notification gracefully |
-| `framing` | All messages are newline-delimited JSON-RPC 2.0 |
 
 ## Pre-built Schemas
 
@@ -134,10 +102,10 @@ Tested schemas are available in [schemas/](schemas/):
 **Usage:**
 ```bash
 # Claude Code
-ANTHROPIC_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json
+ANTHROPIC_API_KEY=... bunx @plaited/agent-eval-harness headless --schema .claude/skills/headless-adapters/schemas/claude-headless.json
 
 # Gemini CLI
-GEMINI_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/gemini-headless.json
+GEMINI_API_KEY=... bunx @plaited/agent-eval-harness headless --schema .claude/skills/headless-adapters/schemas/gemini-headless.json
 ```
 
 ## Agents with Headless CLI Support
@@ -160,10 +128,9 @@ GEMINI_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/ac
 
 1. Explore the CLI's `--help` to identify prompt, output, and auto-approve flags
 2. Capture sample JSON output from the CLI
-3. Map JSONPath patterns to ACP events
+3. Map JSONPath patterns to output events
 4. Create schema file based on an existing template
 5. Test with `headless` command
-6. Validate with `adapter:check`
 
 See [Schema Creation Guide](references/schema-creation-guide.md) for the complete workflow.
 
@@ -179,7 +146,7 @@ See [Schema Creation Guide](references/schema-creation-guide.md) for the complet
 | Timeout on prompt | JSONPath not matching | Capture raw CLI output, verify paths - [see guide](references/troubleshooting-guide.md#jsonpath-debugging) |
 | Empty responses | Content extraction failing | Check extract paths - [see guide](references/troubleshooting-guide.md#output-event-matching) |
 
-**📖 Complete troubleshooting documentation:** [Troubleshooting Guide](references/troubleshooting-guide.md)
+**Complete troubleshooting documentation:** [Troubleshooting Guide](references/troubleshooting-guide.md)
 
 This guide includes:
 - Detailed debugging steps for each issue
@@ -197,33 +164,13 @@ This guide includes:
 
 2. **Test headless adapter directly:**
    ```bash
-   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}\n' | \
-     bunx @plaited/acp-harness headless --schema ./my-schema.json
-   ```
-
-3. **Run adapter:check for diagnostics:**
-   ```bash
-   bunx @plaited/acp-harness adapter:check \
-     bunx @plaited/acp-harness headless --schema ./my-schema.json --verbose
+   bunx @plaited/agent-eval-harness headless --schema ./my-schema.json -p "Hello"
    ```
 
 ## External Resources
 
-- **ACP-Compatible Agents**: [agentclientprotocol.com/overview/agents](https://agentclientprotocol.com/overview/agents)
 - **AgentSkills Spec**: [agentskills.io](https://agentskills.io)
-- **ACP Protocol Docs**: Use the MCP server for protocol questions:
-  ```json
-  {
-    "mcpServers": {
-      "agent-client-protocol-docs": {
-        "type": "http",
-        "url": "https://agentclientprotocol.com/mcp"
-      }
-    }
-  }
-  ```
 
 ## Related
 
-- **[acp-harness skill](../acp-harness/SKILL.md)** - Running evaluations against adapters
-- **[@agentclientprotocol/sdk](https://www.npmjs.com/package/@agentclientprotocol/sdk)** - ACP SDK with TypeScript types
+- **[agent-eval-harness skill](../agent-eval-harness/SKILL.md)** - Running evaluations against adapters

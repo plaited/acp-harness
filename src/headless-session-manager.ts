@@ -38,6 +38,16 @@ export type Session = {
   turnCount: number
 }
 
+/** Process exit information for debugging */
+export type ProcessExitInfo = {
+  /** Exit code (null if killed by signal or timed out) */
+  exitCode: number | null
+  /** Signal that killed the process (if any) */
+  signal?: string
+  /** Whether the process was killed due to timeout */
+  timedOut: boolean
+}
+
 /** Update callback for emitting ACP session updates */
 export type UpdateCallback = (update: ParsedUpdate) => void
 
@@ -49,16 +59,27 @@ export type PromptResult = {
   updates: ParsedUpdate[]
   /** Session ID from CLI (if available) */
   cliSessionId?: string
+  /** Process exit information */
+  exitInfo?: ProcessExitInfo
 }
 
 /** Session manager configuration */
 export type SessionManagerConfig = {
   /** Headless adapter configuration */
   schema: HeadlessAdapterConfig
-  /** Default timeout for operations in ms */
+  /** Default timeout for operations in ms (overrides schema timeout) */
   timeout?: number
-  /** Whether to show debug output (constructed commands) */
+  /** Whether to show debug output (constructed commands, raw stdout) */
   verbose?: boolean
+  /**
+   * Debug mode - shows detailed output for troubleshooting.
+   * When enabled:
+   * - Raw CLI stdout/stderr is logged
+   * - JSONPath match attempts and results are shown
+   * - Process spawn/exit info is displayed
+   * - Timing for each stage is reported
+   */
+  debug?: boolean
 }
 
 // ============================================================================
@@ -86,9 +107,25 @@ export type SessionManagerConfig = {
  * @returns Session manager with create, prompt, and cancel methods
  */
 export const createSessionManager = (config: SessionManagerConfig) => {
-  const { schema, timeout = 60000, verbose = false } = config
+  const { schema, verbose = false, debug = false } = config
+  // Use schema timeout if available, otherwise default to 60000ms
+  const schemaTimeout = 'timeout' in schema ? (schema.timeout ?? 60000) : 60000
+  const timeout = config.timeout ?? schemaTimeout
   const sessions = new Map<string, Session>()
   const outputParser = createOutputParser(schema)
+
+  /**
+   * Debug logging helper - only logs when debug mode is enabled.
+   */
+  const debugLog = (category: string, message: string, data?: unknown): void => {
+    if (debug) {
+      const timestamp = new Date().toISOString()
+      console.error(`[${timestamp}] [${category}] ${message}`)
+      if (data !== undefined) {
+        console.error(JSON.stringify(data, null, 2))
+      }
+    }
+  }
 
   /**
    * Creates a new session.
@@ -108,8 +145,16 @@ export const createSessionManager = (config: SessionManagerConfig) => {
 
     // Initialize mode-specific state
     if (schema.sessionMode === 'iterative') {
+      // Normalize historyTemplate: v2 schemas can have object format, convert to string
+      let templateString: string | undefined
+      if (typeof schema.historyTemplate === 'object' && schema.historyTemplate !== null) {
+        // Use turnFormat from object-style template
+        templateString = schema.historyTemplate.turnFormat
+      } else {
+        templateString = schema.historyTemplate
+      }
       session.history = createHistoryBuilder({
-        template: schema.historyTemplate,
+        template: templateString,
       })
     }
 
@@ -190,7 +235,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       }
     }
 
-    return collectOutput(session, outputParser, onUpdate, timeout)
+    return collectOutput(session, outputParser, onUpdate, timeout, debugLog)
   }
 
   /**
@@ -221,7 +266,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       writePromptToStdin(session.process, fullPrompt, true)
     }
 
-    const result = await collectOutput(session, outputParser, onUpdate, timeout)
+    const result = await collectOutput(session, outputParser, onUpdate, timeout, debugLog)
 
     // Store in history for next turn
     session.history?.addTurn(promptText, result.output)
@@ -269,7 +314,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     }
 
     // Debug output: show constructed command
-    if (verbose) {
+    if (verbose || debug) {
       const stdinNote = schema.prompt.stdin ? ' (+ stdin)' : ''
       console.error(`[headless] Command: ${args.join(' ')}${stdinNote}`)
     }
@@ -374,19 +419,22 @@ const writePromptToStdin = (process: Subprocess, prompt: string, closeAfterWrite
  * @param session - Active session
  * @param parser - Output parser
  * @param onUpdate - Update callback
- * @param timeout - Timeout in ms
+ * @param timeoutMs - Timeout in ms
+ * @param logDebug - Debug logging function
  * @returns Collected output and updates
  */
 const collectOutput = async (
   session: Session,
   parser: OutputParser,
   onUpdate: UpdateCallback | undefined,
-  timeout: number,
+  timeoutMs: number,
+  logDebug: (category: string, message: string, data?: unknown) => void,
 ): Promise<PromptResult> => {
   const updates: ParsedUpdate[] = []
   let output = ''
   let cliSessionId: string | undefined
   const accumulatedMessages: string[] = []
+  let timedOut = false
 
   const stdout = session.process?.stdout
   if (!stdout || typeof stdout === 'number') {
@@ -397,18 +445,29 @@ const collectOutput = async (
   const decoder = new TextDecoder()
   let buffer = ''
 
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Prompt timed out after ${timeout}ms`)), timeout)
+  // Track timeout with a timer ID so we can clear it
+  let timeoutId: Timer | undefined
+
+  const timeoutPromise = new Promise<'timeout'>((resolve) => {
+    timeoutId = setTimeout(() => resolve('timeout'), timeoutMs)
   })
 
+  logDebug('process', `Starting output collection with ${timeoutMs}ms timeout`)
+
   try {
-    const readLoop = async () => {
+    const readLoop = async (): Promise<'complete'> => {
       readLines: while (true) {
         const { done, value } = await reader.read()
 
-        if (done) break
+        if (done) {
+          logDebug('process', 'Process stdout closed')
+          break
+        }
 
-        buffer += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        logDebug('raw', `Received ${chunk.length} bytes`)
+
+        buffer += chunk
 
         // Process complete lines
         const lines = buffer.split('\n')
@@ -417,6 +476,8 @@ const collectOutput = async (
         for (const line of lines) {
           if (!line.trim()) continue
 
+          logDebug('line', `Processing line: ${line.slice(0, 100)}${line.length > 100 ? '...' : ''}`)
+
           // Parse as update first (so updates are emitted even for result lines)
           const update = parser.parseLine(line)
           if (update !== null) {
@@ -424,6 +485,12 @@ const collectOutput = async (
             const updatesToProcess = Array.isArray(update) ? update : [update]
 
             for (const singleUpdate of updatesToProcess) {
+              logDebug('parse', `Matched event: ${singleUpdate.type}`, {
+                title: singleUpdate.title,
+                status: singleUpdate.status,
+                content: singleUpdate.content?.slice(0, 50),
+              })
+
               updates.push(singleUpdate)
               onUpdate?.(singleUpdate)
 
@@ -438,35 +505,81 @@ const collectOutput = async (
                 if (typeof raw.session_id === 'string') {
                   cliSessionId = raw.session_id
                   session.cliSessionId = cliSessionId
+                  logDebug('session', `Extracted CLI session ID: ${cliSessionId}`)
                 }
               }
             }
+          } else {
+            logDebug('parse', 'No matching event mapping for line')
           }
 
           // Check for final result (after emitting update)
           const resultCheck = parser.parseResult(line)
           if (resultCheck.isResult) {
             output = resultCheck.content
+            logDebug('result', `Found result: ${output.slice(0, 100)}${output.length > 100 ? '...' : ''}`)
             break readLines // Exit both loops immediately on result
           }
         }
       }
+      return 'complete'
     }
 
-    await Promise.race([readLoop(), timeoutPromise])
+    const raceResult = await Promise.race([readLoop(), timeoutPromise])
+
+    if (raceResult === 'timeout') {
+      timedOut = true
+      logDebug('timeout', `Process timed out after ${timeoutMs}ms`)
+
+      // Kill the process on timeout
+      if (session.process && !session.process.killed) {
+        session.process.kill('SIGTERM')
+        logDebug('process', 'Sent SIGTERM to process')
+      }
+    }
   } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
     reader.releaseLock()
   }
 
   // Fallback: if result contentPath didn't yield output, use accumulated messages
   if (!output && accumulatedMessages.length > 0) {
     output = accumulatedMessages.join('\n')
+    logDebug('fallback', `Using accumulated messages as output (${accumulatedMessages.length} messages)`)
+  }
+
+  // Get exit info from process
+  let exitInfo: ProcessExitInfo | undefined
+  if (session.process) {
+    try {
+      // Wait for process to exit (with a short timeout to not block)
+      const exitCode = await Promise.race([
+        session.process.exited,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+      ])
+
+      exitInfo = {
+        exitCode: exitCode,
+        timedOut,
+        signal: timedOut ? 'SIGTERM' : undefined,
+      }
+
+      logDebug('exit', `Process exit info`, exitInfo)
+    } catch {
+      exitInfo = {
+        exitCode: null,
+        timedOut,
+      }
+    }
   }
 
   return {
     output,
     updates,
     cliSessionId,
+    exitInfo,
   }
 }
 
