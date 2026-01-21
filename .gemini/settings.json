@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-skills-spec": {
+      "httpUrl": "https://agentskills.io/mcp"
+    },
+    "bun-docs": {
+      "httpUrl": "https://bun.com/docs/mcp"
+    },
+    "agent-client-protocol": {
+      "httpUrl": "https://agentclientprotocol.com/mcp"
+    }
+  }
+}

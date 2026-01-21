@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 import {
+  detectTrajectoryRichness,
   extractContent,
   extractFilePath,
   extractOutput,
+  extractTokenCounts,
   extractTrajectory,
   hasToolErrors,
   headTailPreview,
@@ -16,13 +18,13 @@ import type { TrajectoryStep } from '../schemas.ts'
 // ============================================================================
 
 describe('loadPrompts', () => {
-  test('parses valid JSONL file', async () => {
+  test('parses valid JSONL file with string input', async () => {
     // Create a temporary test file
     const testPath = '/tmp/test-prompts-valid.jsonl'
     await Bun.write(
       testPath,
       `{"id": "test-1", "input": "What is 2+2?"}
-{"id": "test-2", "input": "Hello world", "expected": "greeting"}`,
+{"id": "test-2", "input": "Hello world", "hint": "greeting"}`,
     )
 
     const prompts = await loadPrompts(testPath)
@@ -31,7 +33,20 @@ describe('loadPrompts', () => {
     expect(prompts[0]?.id).toBe('test-1')
     expect(prompts[0]?.input).toBe('What is 2+2?')
     expect(prompts[1]?.id).toBe('test-2')
-    expect(prompts[1]?.expected).toBe('greeting')
+    expect(prompts[1]?.hint).toBe('greeting')
+  })
+
+  test('parses multi-turn input (string array)', async () => {
+    const testPath = '/tmp/test-prompts-multiturn.jsonl'
+    await Bun.write(testPath, `{"id": "test-1", "input": ["Hello", "How are you?", "Goodbye"], "hint": "farewell"}`)
+
+    const prompts = await loadPrompts(testPath)
+
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]?.id).toBe('test-1')
+    expect(Array.isArray(prompts[0]?.input)).toBe(true)
+    expect(prompts[0]?.input).toEqual(['Hello', 'How are you?', 'Goodbye'])
+    expect(prompts[0]?.hint).toBe('farewell')
   })
 
   test('parses prompts with metadata', async () => {
@@ -549,5 +564,143 @@ describe('extractContent', () => {
   test('handles multiline content', () => {
     const input = { content: 'line1\nline2\nline3' }
     expect(extractContent(input)).toBe('line1\nline2\nline3')
+  })
+})
+
+// ============================================================================
+// detectTrajectoryRichness
+// ============================================================================
+
+describe('detectTrajectoryRichness', () => {
+  test('returns "full" when trajectory has thoughts', () => {
+    const trajectory: TrajectoryStep[] = [
+      { type: 'thought', content: 'Let me think...', timestamp: 0 },
+      { type: 'message', content: 'Answer', timestamp: 100 },
+    ]
+
+    expect(detectTrajectoryRichness(trajectory)).toBe('full')
+  })
+
+  test('returns "full" when trajectory has tool calls', () => {
+    const trajectory: TrajectoryStep[] = [
+      { type: 'tool_call', name: 'Read', status: 'completed', timestamp: 0 },
+      { type: 'message', content: 'Answer', timestamp: 100 },
+    ]
+
+    expect(detectTrajectoryRichness(trajectory)).toBe('full')
+  })
+
+  test('returns "full" when trajectory has plans', () => {
+    const trajectory: TrajectoryStep[] = [
+      { type: 'plan', entries: [{ content: 'Step 1', status: 'completed' }], timestamp: 0 },
+      { type: 'message', content: 'Answer', timestamp: 100 },
+    ]
+
+    expect(detectTrajectoryRichness(trajectory)).toBe('full')
+  })
+
+  test('returns "messages-only" when trajectory only has messages', () => {
+    const trajectory: TrajectoryStep[] = [
+      { type: 'message', content: 'First', timestamp: 0 },
+      { type: 'message', content: 'Second', timestamp: 100 },
+    ]
+
+    expect(detectTrajectoryRichness(trajectory)).toBe('messages-only')
+  })
+
+  test('returns "minimal" when trajectory is empty', () => {
+    expect(detectTrajectoryRichness([])).toBe('minimal')
+  })
+
+  test('returns "full" when trajectory has mixed rich content', () => {
+    const trajectory: TrajectoryStep[] = [
+      { type: 'thought', content: 'Thinking...', timestamp: 0 },
+      { type: 'tool_call', name: 'Read', status: 'completed', timestamp: 50 },
+      { type: 'plan', entries: [], timestamp: 100 },
+      { type: 'message', content: 'Done', timestamp: 150 },
+    ]
+
+    expect(detectTrajectoryRichness(trajectory)).toBe('full')
+  })
+})
+
+// ============================================================================
+// extractTokenCounts
+// ============================================================================
+
+describe('extractTokenCounts', () => {
+  test('returns undefined when no usage data present', () => {
+    const updates: SessionNotification[] = [
+      {
+        sessionId: 's1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
+      },
+    ]
+
+    const result = extractTokenCounts(updates)
+
+    expect(result.inputTokens).toBeUndefined()
+    expect(result.outputTokens).toBeUndefined()
+  })
+
+  test('extracts token counts from usage field when present', () => {
+    const updates: SessionNotification[] = [
+      {
+        sessionId: 's1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
+        // @ts-expect-error - simulating adapter-specific usage field
+        usage: { inputTokens: 50, outputTokens: 30 },
+      },
+    ]
+
+    const result = extractTokenCounts(updates)
+
+    expect(result.inputTokens).toBe(50)
+    expect(result.outputTokens).toBe(30)
+  })
+
+  test('accumulates token counts across multiple updates', () => {
+    const updates: SessionNotification[] = [
+      {
+        sessionId: 's1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'First' } },
+        // @ts-expect-error
+        usage: { inputTokens: 50, outputTokens: 30 },
+      },
+      {
+        sessionId: 's1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Second' } },
+        // @ts-expect-error
+        usage: { inputTokens: 25, outputTokens: 45 },
+      },
+    ]
+
+    const result = extractTokenCounts(updates)
+
+    expect(result.inputTokens).toBe(75) // 50 + 25
+    expect(result.outputTokens).toBe(75) // 30 + 45
+  })
+
+  test('handles empty updates array', () => {
+    const result = extractTokenCounts([])
+
+    expect(result.inputTokens).toBeUndefined()
+    expect(result.outputTokens).toBeUndefined()
+  })
+
+  test('handles partial token counts (only input or output)', () => {
+    const updates: SessionNotification[] = [
+      {
+        sessionId: 's1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello' } },
+        // @ts-expect-error
+        usage: { inputTokens: 100 },
+      },
+    ]
+
+    const result = extractTokenCounts(updates)
+
+    expect(result.inputTokens).toBe(100)
+    expect(result.outputTokens).toBeUndefined()
   })
 })

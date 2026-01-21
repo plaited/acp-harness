@@ -19,6 +19,7 @@ The official Claude Code adapter from Zed Industries.
 | Protocol | ACP v1 |
 | Language | TypeScript |
 | Status | Production |
+| **Harness Tested** | ✅ Single-turn, Multi-turn |
 
 **Installation:**
 ```bash
@@ -30,6 +31,12 @@ bunx @zed-industries/claude-code-acp
 - `promptCapabilities.image` - Image input support
 - MCP server integration
 - Slash commands: `/review`, `/init`, `/compact`
+
+**Harness Notes:**
+- Trajectory richness: `messages-only` for simple prompts, `full` when using tools
+- Session creation: ~1-7 seconds (varies by initialization state)
+- Multi-turn: Works correctly with sequential prompts in same session
+- Requires `ANTHROPIC_API_KEY` environment variable
 
 **Use when:**
 - Evaluating Claude Code with the harness
@@ -67,6 +74,36 @@ npx @zed-industries/codex-acp
 **Authentication:** ChatGPT subscription, `CODEX_API_KEY`, or `OPENAI_API_KEY`
 
 **Documentation:** [GitHub](https://github.com/zed-industries/codex-acp)
+
+---
+
+### Droid ACP
+
+Community ACP adapter for Droid agent.
+
+| Property | Value |
+|----------|-------|
+| Package | `@yaonyan/droid-acp` |
+| Repository | [npmjs.com/package/@yaonyan/droid-acp](https://www.npmjs.com/package/@yaonyan/droid-acp) |
+| Protocol | ACP v1 |
+| Language | TypeScript |
+| Status | Production |
+| **Harness Tested** | ✅ Single-turn, Multi-turn |
+
+**Installation:**
+```bash
+bunx @yaonyan/droid-acp
+```
+
+**Harness Notes:**
+- Trajectory richness: `messages-only` for simple prompts
+- Session creation: ~1 second
+- Multi-turn: Works correctly with sequential prompts in same session
+- Uses Droid's native stream-jsonrpc format internally
+
+**Use when:**
+- Evaluating Droid agent with the harness
+- Comparing agent performance across different providers
 
 ---
 
@@ -164,18 +201,30 @@ uvx fast-agent-acp@latest --model <model_name>
 
 ### Gemini CLI
 
-Google's official Gemini CLI.
+Google's official Gemini CLI with experimental ACP support.
 
 | Property | Value |
 |----------|-------|
 | Package | `@google/gemini-cli` |
+| Command | `gemini --experimental-acp` |
 | Repository | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
-| Status | Production |
+| Status | Production (ACP experimental) |
+| **Harness Tested** | ✅ Single-turn, Multi-turn |
 
 **Installation:**
 ```bash
 npm install -g @google/gemini-cli
+# or run directly:
+bunx @google/gemini-cli --experimental-acp
 ```
+
+**Harness Notes:**
+- Trajectory richness: `full` - reports thoughts, tool calls, and plans
+- Session creation: ~200-300ms (fastest of tested adapters)
+- Multi-turn: Works correctly with sequential prompts in same session
+- Requires `GOOGLE_API_KEY` environment variable or Google Cloud auth
+
+**Important:** The `--experimental-acp` flag is required to enable ACP mode.
 
 **Use when:** Evaluating Gemini models via ACP.
 
@@ -343,15 +392,17 @@ These agents are listed on [agentclientprotocol.com](https://agentclientprotocol
 
 ## Compatibility Matrix
 
-| Agent | Protocol | MCP | Images | Streaming |
-|-------|----------|-----|--------|-----------|
-| claude-code-acp | v1 | Yes | Yes | Yes |
-| codex-acp | v1 | Yes | Yes | Yes |
-| fast-agent | v1 | Yes | Yes | Yes |
-| goose | v1 | Yes | - | Yes |
-| mistral-vibe | v1 | Yes | - | Yes |
-| openhands | v1 | - | - | Yes |
-| opencode | v1 | - | - | Yes |
+| Agent | Protocol | MCP | Images | Streaming | Harness Tested |
+|-------|----------|-----|--------|-----------|----------------|
+| claude-code-acp | v1 | Yes | Yes | Yes | ✅ |
+| droid-acp | v1 | - | - | Yes | ✅ |
+| gemini-cli | v1 | - | - | Yes | ✅ |
+| codex-acp | v1 | Yes | Yes | Yes | - |
+| fast-agent | v1 | Yes | Yes | Yes | - |
+| goose | v1 | Yes | - | Yes | - |
+| mistral-vibe | v1 | Yes | - | Yes | - |
+| openhands | v1 | - | - | Yes | - |
+| opencode | v1 | - | - | Yes | - |
 
 ### Legend
 
@@ -359,6 +410,7 @@ These agents are listed on [agentclientprotocol.com](https://agentclientprotocol
 - **MCP**: Supports MCP server pass-through
 - **Images**: Accepts image content blocks
 - **Streaming**: Emits real-time `session/update` notifications
+- **Harness Tested**: Verified with acp-harness single-turn and multi-turn
 
 ---
 

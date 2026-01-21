@@ -89,11 +89,10 @@ acp-harness capture <prompts.jsonl> <command> [args...] [options]
 | `prompts.jsonl` | Input file with prompts to execute | Required |
 | `command [args]` | ACP agent command (e.g., `bunx claude-code-acp`) | Required |
 | `-o, --output` | Output file/path | stdout |
-| `-c, --cwd` | Working directory for agent | current |
+| `-c, --cwd` | Working directory for agent (agents auto-discover MCP configs from here) | current |
 | `-t, --timeout` | Request timeout in ms | `60000` |
 | `--progress` | Show progress to stderr | false |
 | `--append` | Append to output file | false |
-| `--mcp-server` | MCP server config JSON (repeatable) | none |
 | `-g, --grader` | Path to grader module | none |
 
 ### Examples
@@ -107,11 +106,6 @@ acp-harness capture prompts.jsonl bun ./my-adapter.ts -o results.jsonl
 
 # With grader (adds score to each result)
 acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
-
-# With MCP server
-acp-harness capture prompts.jsonl bunx claude-code-acp \
-  --mcp-server '{"type":"stdio","name":"fs","command":"mcp-filesystem","args":["/data"],"env":[]}' \
-  -o results.jsonl
 ```
 
 ## Trials Command
@@ -309,15 +303,17 @@ Graders provide semantic pass/fail scoring for captured trajectories. The harnes
 // my-grader.ts
 import type { Grader } from '@plaited/acp-harness/schemas'
 
-export const grade: Grader = async ({ input, output, expected, trajectory }) => {
-  const pass = output.toLowerCase().includes(expected?.toLowerCase() ?? '')
+export const grade: Grader = async ({ input, output, hint, trajectory }) => {
+  const pass = output.toLowerCase().includes(hint?.toLowerCase() ?? '')
   return {
     pass,
     score: pass ? 1 : 0,
-    reasoning: pass ? 'Contains expected answer' : 'Missing expected answer'
+    reasoning: pass ? 'Contains hint content' : 'Missing hint content'
   }
 }
 ```
+
+**Note:** `input` can be `string` (single turn) or `string[]` (multi-turn). The `hint` field provides grader context (renamed from `expected`).
 
 ### Python/Executable Graders
 
@@ -329,13 +325,13 @@ import json, sys
 
 data = json.load(sys.stdin)
 output = data.get("output", "").lower()
-expected = (data.get("expected") or "").lower()
+hint = (data.get("hint") or "").lower()
 
-pass_result = expected in output if expected else True
+pass_result = hint in output if hint else True
 print(json.dumps({
     "pass": pass_result,
     "score": 1.0 if pass_result else 0.0,
-    "reasoning": "Contains expected" if pass_result else "Missing expected"
+    "reasoning": "Contains hint" if pass_result else "Missing hint"
 }))
 ```
 
@@ -351,18 +347,22 @@ See [graders.md](references/graders.md) for complete polyglot grader documentati
 Each line in `prompts.jsonl`:
 
 ```jsonl
-{"id":"test-001","input":"Create a primary button","expected":"should contain <button>","metadata":{"category":"ui"}}
-{"id":"test-002","input":"Write a function for form validation","metadata":{"category":"logic"}}
+{"id":"test-001","input":"Create a button","hint":"should contain <button>"}
+{"id":"test-002","input":["Create a button","Make it blue"],"metadata":{"category":"ui"}}
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier |
-| `input` | Yes | Prompt text for the agent |
-| `expected` | No | Expected output (for downstream scoring) |
+| `input` | Yes | Single prompt (string) or conversation turns (string[]) |
+| `hint` | No | Grader context - what to look for (not strict match) |
 | `reference` | No | Reference solution (for validate-refs) |
 | `metadata` | No | Tags, category, difficulty for filtering |
 | `timeout` | No | Override default timeout for this prompt |
+
+**Session behavior:** Each JSONL entry = 1 fresh session
+- `input: string` → 1 session, 1 prompt
+- `input: string[]` → 1 session, N prompts (sequential turns)
 
 ## Output Format
 
@@ -373,16 +373,44 @@ Full trajectory JSONL (always):
   "id": "test-001",
   "input": "Find the CEO of Anthropic",
   "output": "The CEO of Anthropic is Dario Amodei.",
+  "hint": "should mention Dario Amodei",
   "trajectory": [
-    {"type": "thought", "content": "I'll search for this...", "timestamp": 100, "stepId": "test-001-step-1"},
-    {"type": "tool_call", "name": "WebSearch", "status": "completed", "input": {...}, "output": {...}, "duration": 500, "stepId": "test-001-step-2"},
-    {"type": "message", "content": "The CEO of Anthropic is Dario Amodei.", "timestamp": 700, "stepId": "test-001-step-3"}
+    {"type": "thought", "content": "I'll search for this...", "timestamp": 100},
+    {"type": "tool_call", "name": "WebSearch", "status": "completed", "input": {...}, "output": {...}, "duration": 500},
+    {"type": "message", "content": "The CEO of Anthropic is Dario Amodei.", "timestamp": 700}
   ],
-  "metadata": {"category": "search", "agent": "claude-code-acp"},
-  "timing": {"start": 1704067200000, "end": 1704067201234, "firstResponse": 100},
+  "metadata": {
+    "category": "search",
+    "agent": "bunx claude-code-acp",
+    "trajectoryRichness": "full",
+    "turnCount": 1
+  },
+  "timing": {
+    "start": 1704067200000,
+    "end": 1704067201234,
+    "firstResponse": 100,
+    "sessionCreation": 234,
+    "total": 1234,
+    "inputTokens": 150,
+    "outputTokens": 85
+  },
   "toolErrors": false
 }
 ```
+
+### Output Fields
+
+| Field | Description |
+|-------|-------------|
+| `input` | Original prompt (string or string[] for multi-turn) |
+| `hint` | Grader context hint (if provided) |
+| `metadata.trajectoryRichness` | `"full"` \| `"messages-only"` \| `"minimal"` |
+| `metadata.turnCount` | Number of conversation turns (1 for string, N for array) |
+| `timing.sessionCreation` | Time to create session (ms) |
+| `timing.total` | Total duration (end - start) |
+| `timing.inputTokens` | Input tokens consumed (if available from adapter) |
+| `timing.outputTokens` | Output tokens generated (if available from adapter) |
+| `toolErrors` | Whether any tool calls failed |
 
 **Note:** `toolErrors` replaces misleading `status: 'passed'|'failed'`. Real pass/fail comes from YOUR grader.
 

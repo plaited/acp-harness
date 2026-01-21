@@ -129,8 +129,8 @@ const formatCalibrationMarkdown = (samples: CalibrationSample[]): string => {
     lines.push(`**Input:** ${sample.input}`)
     lines.push('')
 
-    if (sample.expected) {
-      lines.push(`**Expected:** ${sample.expected}`)
+    if (sample.hint) {
+      lines.push(`**Hint:** ${sample.hint}`)
       lines.push('')
     }
 
@@ -212,7 +212,7 @@ export const runCalibrate = async (config: CalibrateConfig): Promise<Calibration
       id: result.id,
       input: result.input,
       output: result.output,
-      expected: result.expected,
+      hint: result.hint,
       originalScore: result.score as GraderResult,
       trajectorySnippet: getTrajectorySnippet(result.trajectory),
     }
@@ -222,7 +222,7 @@ export const runCalibrate = async (config: CalibrateConfig): Promise<Calibration
       calibrationSample.rescoredResult = await grader({
         input: result.input,
         output: result.output,
-        expected: result.expected,
+        hint: result.hint,
         trajectory: result.trajectory,
       })
     }
