@@ -21,7 +21,7 @@
   "result": {
     "matchPath": "$.type",
     "matchValue": "result",
-    "contentPath": "$.stats"
+    "contentPath": "$.content"
   },
   "historyTemplate": "User: {{input}}\nAssistant: {{output}}"
 }
