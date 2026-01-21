@@ -123,27 +123,29 @@ GOOGLE_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/ac
 
 ## Agents with Headless CLI Support
 
-### Ready for Schema Creation (No Native ACP)
+> **Requirement:** The headless adapter requires **JSON streaming output** from the CLI. Agents without JSON output cannot be used with this adapter.
 
-These agents have headless CLI modes but no native ACP support. Create a schema to use them:
+### Ready for Schema Creation
 
-| Agent | CLI Documentation |
-|-------|-------------------|
-| Cursor | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) |
-| Amp | [ampcode.com/manual#cli](https://ampcode.com/manual#cli) |
-| Copilot | [docs.github.com/.../about-copilot-cli](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) |
-| Droid | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
-| Letta | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
+These agents support JSON streaming output and are compatible with the headless adapter:
 
-### Have Native ACP (Use Headless if ACP is Unstable)
+| Agent | JSON Output Flag | Prompt Flag | CLI Documentation |
+|-------|------------------|-------------|-------------------|
+| Amp | `--stream-json` | `-x` | [ampcode.com/manual#cli](https://ampcode.com/manual#cli) |
+| Droid | `-o stream-json` | positional | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
+| Letta | `--output-format stream-json` | `-p` | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
+| Goose | `--output-format stream-json` | `-t` | [block.github.io/goose/.../goose-cli-commands](https://block.github.io/goose/docs/guides/goose-cli-commands/) |
+| OpenCode | `--format json` | positional | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| Codex | `--json` | positional | [developers.openai.com/codex/cli](https://developers.openai.com/codex/cli/) |
 
-These agents have ACP support. Use headless mode if their native ACP is unstable:
+### Waiting for JSON Output Support
 
-| Agent | Headless Docs | ACP Status |
-|-------|---------------|------------|
-| Goose | [block.github.io/goose/.../headless-goose](https://block.github.io/goose/docs/tutorials/headless-goose/) | Verify stability |
-| OpenCode | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) | Verify stability |
-| Codex | [developers.openai.com/codex/cli](https://developers.openai.com/codex/cli/) | Via Zed adapter |
+These agents have headless CLI modes but lack JSON streaming output:
+
+| Agent | CLI Documentation | Status |
+|-------|-------------------|--------|
+| Cursor | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) | Only `--output-format text` |
+| Copilot | [docs.github.com/.../about-copilot-cli](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) | No structured output |
 
 ## Creating a Schema
 

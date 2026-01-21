@@ -204,18 +204,25 @@ All 6 checks should pass:
 
 ## CLI Documentation Links
 
-Use these docs when creating schemas for popular agents:
+> **Requirement:** The headless adapter requires JSON streaming output. See the JSON Output Flag column.
 
-| Agent | CLI Documentation |
-|-------|-------------------|
-| Cursor | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) |
-| Amp | [ampcode.com/manual#cli](https://ampcode.com/manual#cli) |
-| Copilot | [docs.github.com/.../about-copilot-cli](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) |
-| Droid | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
-| Letta | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
-| Goose | [block.github.io/goose/.../headless-goose](https://block.github.io/goose/docs/tutorials/headless-goose/) |
-| OpenCode | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
-| Codex | [developers.openai.com/codex/cli](https://developers.openai.com/codex/cli/) |
+### Compatible Agents
+
+| Agent | JSON Output Flag | Prompt Flag | CLI Documentation |
+|-------|------------------|-------------|-------------------|
+| Amp | `--stream-json` | `-x` | [ampcode.com/manual#cli](https://ampcode.com/manual#cli) |
+| Droid | `-o stream-json` | positional | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
+| Letta | `--output-format stream-json` | `-p` | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
+| Goose | `--output-format stream-json` | `-t` | [block.github.io/goose/.../goose-cli-commands](https://block.github.io/goose/docs/guides/goose-cli-commands/) |
+| OpenCode | `--format json` | positional | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| Codex | `--json` | positional | [developers.openai.com/codex/cli](https://developers.openai.com/codex/cli/) |
+
+### Incompatible (No JSON Output)
+
+| Agent | CLI Documentation | Issue |
+|-------|-------------------|-------|
+| Cursor | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) | Only `--output-format text` |
+| Copilot | [docs.github.com/.../about-copilot-cli](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) | No structured output |
 
 > **Note:** For detailed ACP protocol questions during schema creation, use the `agent-client-protocol-docs` MCP server. See SKILL.md for configuration.
 
