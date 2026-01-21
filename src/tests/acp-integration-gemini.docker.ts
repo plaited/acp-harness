@@ -27,16 +27,28 @@ setDefaultTimeout(120000)
 // Fixtures directory with .claude/skills and .mcp.json
 const FIXTURES_DIR = `${import.meta.dir}/fixtures`
 
-describe('ACP Client Integration - Gemini', () => {
+// Gemini CLI accepts both GOOGLE_API_KEY and GEMINI_API_KEY
+// Use either one if available
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY ?? ''
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''
+const API_KEY = GOOGLE_API_KEY || GEMINI_API_KEY
+
+// Skip all tests if no API key is available
+const describeWithApiKey = API_KEY ? describe : describe.skip
+
+describeWithApiKey('ACP Client Integration - Gemini', () => {
   let client: ACPClient
 
   beforeAll(async () => {
-    // Gemini CLI adapter expects GOOGLE_API_KEY
+    // Gemini CLI accepts both GOOGLE_API_KEY and GEMINI_API_KEY
+    // Pass both to ensure the CLI finds the key regardless of which it checks first
     client = createACPClient({
       command: ['bunx', '@google/gemini-cli', '--experimental-acp'],
       timeout: 120000, // 2 min timeout for initialization
       env: {
-        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY ?? '',
+        // Pass both variants - Gemini CLI should pick up whichever it prefers
+        GOOGLE_API_KEY: API_KEY,
+        GEMINI_API_KEY: API_KEY,
       },
     })
 

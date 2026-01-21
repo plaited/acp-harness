@@ -30,7 +30,13 @@ const FIXTURES_DIR = `${import.meta.dir}/fixtures`
 // Use haiku for all tests to reduce costs
 const TEST_MODEL = 'claude-haiku-4-5-20251001'
 
-describe('ACP Client Integration', () => {
+// Get API key from environment
+const API_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+
+// Skip all tests if no API key is available
+const describeWithApiKey = API_KEY ? describe : describe.skip
+
+describeWithApiKey('ACP Client Integration', () => {
   let client: ACPClient
 
   beforeAll(async () => {
@@ -39,7 +45,7 @@ describe('ACP Client Integration', () => {
       command: ['bunx', 'claude-code-acp'],
       timeout: 120000, // 2 min timeout for initialization
       env: {
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+        ANTHROPIC_API_KEY: API_KEY,
       },
     })
 
