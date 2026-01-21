@@ -16,82 +16,133 @@ This skill helps developers **integrate agents with ACP** (Agent Client Protocol
 
 | Use Case | Tool | Description |
 |----------|------|-------------|
+| Wrap headless CLI agent | `headless` command | Schema-driven adapter for any CLI (**recommended**) |
 | Connect existing agent | [Adapter Catalog](references/adapter-catalog.md) | Curated list of production adapters |
-| Build custom integration | `adapter:scaffold` command | Generate project boilerplate |
 | Verify implementation | `adapter:check` command | Validate protocol compliance |
+| Create new schemas | [Schema Creation Guide](references/schema-creation-guide.md) | Step-by-step workflow for new agents |
 
 ## Quick Decision Tree
 
+> **Most coding agents support headless CLI modes with JSON output - try this first!**
+
 ```mermaid
 flowchart TD
-    Start["Need to connect an agent to ACP?"] --> Q1{"Is there an existing adapter?"}
-    Q1 -->|Yes| Catalog["Check Adapter Catalog"]
-    Catalog --> MeetsNeeds{"Meets your needs?"}
-    MeetsNeeds -->|Yes| Use["Use existing adapter"]
-    MeetsNeeds -->|No| Extend["Fork and extend"]
-    Q1 -->|No| Scaffold["Run adapter:scaffold"]
-    Extend --> Implement
-    Scaffold --> Implement["Implement handlers"]
-    Implement --> Check["Run adapter:check"]
-    Check --> Pass{"All checks pass?"}
-    Pass -->|Yes| Done["Ready for production"]
-    Pass -->|No| Fix["Fix issues"]
-    Fix --> Check
+    Start["Need to connect an agent?"] --> Q1{"Does agent have headless CLI?"}
+    Q1 -->|Yes| Headless["1. Use headless command with schema"]
+    Q1 -->|No| Q2{"Is there a community ACP adapter?"}
+    Q2 -->|Yes| Community["2. Use community adapter"]
+    Q2 -->|No| Guide["See Schema Creation Guide"]
+    Headless --> Check["Run adapter:check"]
+    Community --> Check
+    Guide --> Headless
 ```
 
 ## CLI Commands
 
-### adapter:scaffold
+### headless
 
-Scaffold a new adapter project with ACP protocol handlers.
+Schema-driven ACP adapter for ANY headless CLI agent. No code required - just define a JSON schema describing how to interact with the CLI.
 
 ```bash
-acp-harness adapter:scaffold [name] [options]
+bunx @plaited/acp-harness headless --schema <path>
 ```
 
 **Options:**
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-o, --output` | Output directory | `./<name>-acp` |
-| `--lang` | Language: `ts` or `python` | `ts` |
-| `--minimal` | Generate minimal boilerplate only | false |
+| Flag | Description | Required |
+|------|-------------|----------|
+| `-s, --schema` | Path to adapter schema (JSON) | Yes |
+
+**Why Use Headless?**
+
+| Scenario | Solution |
+|----------|----------|
+| Agent has CLI but no ACP | Create schema, run headless |
+| Agent's ACP mode lacks features | Use headless CLI mode instead |
+| Quick prototyping | Schema-only, no code to write |
+
+**Schema Format:**
+
+```json
+{
+  "version": 1,
+  "name": "my-agent",
+  "command": ["my-agent-cli"],
+  "sessionMode": "stream",
+  "prompt": { "flag": "-p" },
+  "output": { "flag": "--output-format", "value": "stream-json" },
+  "autoApprove": ["--allow-all"],
+  "outputEvents": [
+    {
+      "match": { "path": "$.type", "value": "message" },
+      "emitAs": "message",
+      "extract": { "content": "$.text" }
+    }
+  ],
+  "result": {
+    "matchPath": "$.type",
+    "matchValue": "result",
+    "contentPath": "$.content"
+  }
+}
+```
+
+**Session Modes:**
+
+| Mode | Description | Use When |
+|------|-------------|----------|
+| `stream` | Keep process alive, multi-turn via stdin | CLI supports session resume |
+| `iterative` | New process per turn, accumulate history | CLI is stateless |
 
 **Examples:**
 
 ```bash
-# Scaffold TypeScript adapter
-acp-harness adapter:scaffold my-agent -o ./adapters/my-agent-acp
+# Run with Claude headless schema
+ANTHROPIC_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json
 
-# Scaffold Python adapter
-acp-harness adapter:scaffold my-agent --lang python
+# Run with Gemini headless schema
+GEMINI_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/gemini-headless.json
 
-# Minimal TypeScript scaffold
-acp-harness adapter:scaffold my-agent --minimal
+# Use in capture pipeline
+bunx @plaited/acp-harness capture prompts.jsonl \
+  bunx @plaited/acp-harness headless --schema ./my-schema.json \
+  -o results.jsonl
+
+# Validate adapter compliance
+bunx @plaited/acp-harness adapter:check \
+  bunx @plaited/acp-harness headless --schema ./my-schema.json
 ```
 
-**Generated Structure (TypeScript):**
+**Pre-built Schemas:**
 
+Pre-built schemas are available in [schemas/](schemas/):
+
+| Schema | Agent | Mode | Auth Env Var | Notes |
+|--------|-------|------|--------------|-------|
+| `claude-headless.json` | Claude Code | stream | `ANTHROPIC_API_KEY` | Uses `-p` flag, supports resume |
+| `gemini-headless.json` | Gemini CLI | iterative | `GOOGLE_API_KEY` | Uses `--prompt` flag |
+
+> **Note:** Only schemas with passing E2E tests are included. See [Schema Creation Guide](references/schema-creation-guide.md) for creating schemas for other agents.
+
+**Using Schemas from Installed Skills:**
+
+When this skill is installed in a project, agents can reference schemas directly using the path from project root:
+
+```bash
+# Path pattern: .{agent}/skills/acp-adapters/schemas/{schema}.json
+bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json
+bunx @plaited/acp-harness headless --schema .cursor/skills/acp-adapters/schemas/gemini-headless.json
 ```
-my-agent-acp/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── main.ts               # Entry point with AgentSideConnection
-│   ├── session-manager.ts    # Session lifecycle management
-│   └── handlers/
-│       ├── initialize.ts     # initialize method handler
-│       ├── session-new.ts    # session/new handler
-│       ├── session-prompt.ts # session/prompt handler
-│       └── session-cancel.ts # session/cancel notification handler
-└── README.md
-```
+
+The skill's `Base directory` (shown when the skill is activated) provides the exact path to the schemas directory.
+
+---
 
 ### adapter:check
 
 Validate that an adapter implements the ACP protocol correctly.
 
 ```bash
-acp-harness adapter:check <command> [args...]
+bunx @plaited/acp-harness adapter:check <command> [args...]
 ```
 
 **Options:**
@@ -115,13 +166,13 @@ acp-harness adapter:check <command> [args...]
 
 ```bash
 # Check a local adapter
-acp-harness adapter:check bun ./my-adapter/src/main.ts
+bunx @plaited/acp-harness adapter:check bun ./my-adapter/src/main.ts
 
 # Check with verbose output
-acp-harness adapter:check bunx my-published-adapter --verbose
+bunx @plaited/acp-harness adapter:check bunx my-published-adapter --verbose
 
 # Check with longer timeout
-acp-harness adapter:check python ./adapter.py --timeout 10000
+bunx @plaited/acp-harness adapter:check python ./adapter.py --timeout 10000
 ```
 
 **Sample Output:**
@@ -177,7 +228,36 @@ See [Protocol Quick Reference](references/protocol-quick-ref.md) for complete me
 
 ## Getting Started
 
-### Option 1: Use Existing Adapter
+### Option 1: Use Headless Adapter (Recommended)
+
+Most modern coding agents support headless CLI modes with JSON output. This is the **simplest** approach - just a schema file, no code required.
+
+1. **Check if a schema already exists** in [schemas/](schemas/):
+   ```bash
+   ls .claude/skills/acp-adapters/schemas/
+   ```
+
+2. **If a schema exists, run it:**
+   ```bash
+   # Example: Claude Code
+   ANTHROPIC_API_KEY=... bunx @plaited/acp-harness headless --schema .claude/skills/acp-adapters/schemas/claude-headless.json
+   ```
+
+3. **If no schema exists, create one** using the [Schema Creation Guide](references/schema-creation-guide.md).
+
+4. **Validate compliance:**
+   ```bash
+   bunx @plaited/acp-harness adapter:check bunx @plaited/acp-harness headless --schema ./my-agent-schema.json
+   ```
+
+5. **Capture trajectories:**
+   ```bash
+   bunx @plaited/acp-harness capture prompts.jsonl \
+     bunx @plaited/acp-harness headless --schema ./my-agent-schema.json \
+     -o results.jsonl
+   ```
+
+### Option 2: Use Existing Adapter
 
 Check the [Adapter Catalog](references/adapter-catalog.md) for your agent:
 
@@ -185,39 +265,18 @@ Check the [Adapter Catalog](references/adapter-catalog.md) for your agent:
 # Claude Code (official)
 bunx @zed-industries/claude-code-acp
 
-# Gemini CLI
-bunx @anthropic/gemini-acp
+# Gemini CLI (built-in ACP mode)
+gemini --experimental-acp
 
 # See catalog for more
 ```
-
-### Option 2: Build Custom Adapter
-
-1. **Scaffold project:**
-   ```bash
-   acp-harness adapter:scaffold my-agent
-   cd my-agent-acp
-   bun install
-   ```
-
-2. **Implement handlers:**
-   See [Implementation Guide](references/implementation-guide.md) for step-by-step instructions.
-
-3. **Validate compliance:**
-   ```bash
-   acp-harness adapter:check bun ./src/main.ts
-   ```
-
-4. **Test with harness:**
-   ```bash
-   acp-harness capture prompts.jsonl bun ./src/main.ts -o results.jsonl
-   ```
 
 ## References
 
 | Document | Description |
 |----------|-------------|
 | [adapter-catalog.md](references/adapter-catalog.md) | Curated list of existing adapters |
+| [schema-creation-guide.md](references/schema-creation-guide.md) | Workflow for creating headless schemas |
 | [protocol-quick-ref.md](references/protocol-quick-ref.md) | ACP protocol cheat sheet |
 | [implementation-guide.md](references/implementation-guide.md) | Step-by-step adapter creation |
 
