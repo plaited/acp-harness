@@ -53,12 +53,13 @@ export type ResultParseResult = ParsedResult | NotResult
  * - `$.field` - Root field access
  * - `$.nested.field` - Nested field access
  * - `$.array[0]` - Array index access
+ * - `$.array[*]` - Array wildcard (returns all items)
  * - `$.array[0].field` - Combined array and field access
  * - `'literal'` - Literal string values (single quotes)
  *
  * @param obj - Object to extract from
  * @param path - JSONPath expression
- * @returns Extracted value or undefined
+ * @returns Extracted value, array of values (for wildcard), or undefined
  */
 export const jsonPath = (obj: unknown, path: string): unknown => {
   // Handle literal strings (e.g., "'pending'")
@@ -73,12 +74,24 @@ export const jsonPath = (obj: unknown, path: string): unknown => {
 
   // Parse path into segments, handling both dot notation and array indices
   // e.g., "message.content[0].text" -> ["message", "content", 0, "text"]
-  const segments: (string | number)[] = []
+  // e.g., "message.content[*].type" -> ["message", "content", "*", "type"]
+  const segments: (string | number | '*')[] = []
   const pathBody = path.slice(2) // Remove "$."
 
   // Split by dots first, then handle array indices within each part
   for (const part of pathBody.split('.')) {
     if (!part) continue
+
+    // Check for array wildcard: "content[*]"
+    const wildcardMatch = part.match(/^([^[]*)\[\*\]$/)
+    if (wildcardMatch) {
+      const propName = wildcardMatch[1]
+      if (propName) {
+        segments.push(propName)
+      }
+      segments.push('*')
+      continue
+    }
 
     // Check for array index: "content[0]" or just "[0]"
     const arrayMatch = part.match(/^([^[]*)\[(\d+)\]$/)
@@ -103,7 +116,13 @@ export const jsonPath = (obj: unknown, path: string): unknown => {
       return undefined
     }
 
-    if (typeof segment === 'number') {
+    if (segment === '*') {
+      // Array wildcard - return array as-is for further processing
+      if (!Array.isArray(current)) {
+        return undefined
+      }
+      return current
+    } else if (typeof segment === 'number') {
       // Array index access
       if (!Array.isArray(current)) {
         return undefined
@@ -159,9 +178,9 @@ export const createOutputParser = (config: HeadlessAdapterConfig) => {
    * Parses a single JSON line from CLI output.
    *
    * @param line - JSON string from CLI stdout
-   * @returns Parsed update or null if no mapping matches
+   * @returns Parsed update, array of updates (for wildcard matches), or null if no mapping matches
    */
-  const parseLine = (line: string): ParsedUpdate | null => {
+  const parseLine = (line: string): ParsedUpdate | ParsedUpdate[] | null => {
     let event: unknown
     try {
       event = JSON.parse(line)
@@ -173,13 +192,36 @@ export const createOutputParser = (config: HeadlessAdapterConfig) => {
     // Try each mapping until one matches
     for (const mapping of outputEvents) {
       const matchValue = jsonPath(event, mapping.match.path)
-      // Support wildcard "*" to match any non-null value
-      if (mapping.match.value === '*') {
-        if (matchValue !== undefined && matchValue !== null) {
+
+      // Handle array results from wildcard paths (e.g., $.message.content[*])
+      if (Array.isArray(matchValue)) {
+        const updates: ParsedUpdate[] = []
+        for (const item of matchValue) {
+          // Check if this array item matches the expected value
+          if (mapping.match.value === '*') {
+            if (item !== undefined && item !== null) {
+              updates.push(createUpdate(item, mapping))
+            }
+          } else if (item === mapping.match.value || (typeof item === 'object' && item !== null)) {
+            // For objects, check if they contain the match value
+            const itemType = (item as Record<string, unknown>).type
+            if (itemType === mapping.match.value) {
+              updates.push(createUpdate(item, mapping))
+            }
+          }
+        }
+        if (updates.length > 0) {
+          return updates
+        }
+      } else {
+        // Single value matching (original behavior)
+        if (mapping.match.value === '*') {
+          if (matchValue !== undefined && matchValue !== null) {
+            return createUpdate(event, mapping)
+          }
+        } else if (matchValue === mapping.match.value) {
           return createUpdate(event, mapping)
         }
-      } else if (matchValue === mapping.match.value) {
-        return createUpdate(event, mapping)
       }
     }
 
