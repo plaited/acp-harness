@@ -29,9 +29,13 @@ import type { RawOutput, RunConfig } from './pipeline.types.ts'
  * @param prompt - Prompt text to execute
  * @param command - Command template with `{}` placeholder
  * @param timeout - Execution timeout in milliseconds
- * @returns Raw output lines from command
+ * @returns Object with output lines and optional stderr error
  */
-const runSimple = async (prompt: string, command: string, timeout: number): Promise<string[]> => {
+const runSimple = async (
+  prompt: string,
+  command: string,
+  timeout: number,
+): Promise<{ lines: string[]; error?: string }> => {
   const escapedPrompt = prompt.replace(/'/g, "'\\''")
   const finalCmd = command.replace('{}', `'${escapedPrompt}'`)
 
@@ -43,12 +47,13 @@ const runSimple = async (prompt: string, command: string, timeout: number): Prom
   const timeoutId = setTimeout(() => proc.kill(), timeout)
 
   try {
-    const stdout = await new Response(proc.stdout).text()
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     clearTimeout(timeoutId)
-    return stdout.trim().split('\n').filter(Boolean)
-  } catch {
+    const lines = stdout.trim().split('\n').filter(Boolean)
+    return stderr.trim() ? { lines, error: stderr.trim() } : { lines }
+  } catch (err) {
     clearTimeout(timeoutId)
-    return []
+    return { lines: [], error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -61,9 +66,13 @@ const runSimple = async (prompt: string, command: string, timeout: number): Prom
  * @param prompt - Prompt text to execute
  * @param template - Shell command template
  * @param timeout - Execution timeout in milliseconds
- * @returns Raw output lines from command
+ * @returns Object with output lines and optional stderr error
  */
-const runShell = async (prompt: string, template: string, timeout: number): Promise<string[]> => {
+const runShell = async (
+  prompt: string,
+  template: string,
+  timeout: number,
+): Promise<{ lines: string[]; error?: string }> => {
   const proc = Bun.spawn(['sh', '-c', template], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -73,12 +82,13 @@ const runShell = async (prompt: string, template: string, timeout: number): Prom
   const timeoutId = setTimeout(() => proc.kill(), timeout)
 
   try {
-    const stdout = await new Response(proc.stdout).text()
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     clearTimeout(timeoutId)
-    return stdout.trim().split('\n').filter(Boolean)
-  } catch {
+    const lines = stdout.trim().split('\n').filter(Boolean)
+    return stderr.trim() ? { lines, error: stderr.trim() } : { lines }
+  } catch (err) {
     clearTimeout(timeoutId)
-    return []
+    return { lines: [], error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -200,15 +210,12 @@ export const runPipeline = async (
       const startTime = Date.now()
       const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
       const allLines: string[] = []
-      let error: string | undefined
+      const errors: string[] = []
 
-      try {
-        for (const input of inputs) {
-          const lines = await runSimple(input, simpleCommand, timeout)
-          allLines.push(...lines)
-        }
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err)
+      for (const input of inputs) {
+        const result = await runSimple(input, simpleCommand, timeout)
+        allLines.push(...result.lines)
+        if (result.error) errors.push(result.error)
       }
 
       const endTime = Date.now()
@@ -223,7 +230,7 @@ export const runPipeline = async (
           end: endTime,
           total: endTime - startTime,
         },
-        ...(error && { error }),
+        ...(errors.length > 0 && { error: errors.join('\n') }),
       }
 
       await writeOutput(JSON.stringify(output), outputPath, !isFirstOutput)
@@ -246,15 +253,12 @@ export const runPipeline = async (
       const startTime = Date.now()
       const inputs = Array.isArray(promptCase.input) ? promptCase.input : [promptCase.input]
       const allLines: string[] = []
-      let error: string | undefined
+      const errors: string[] = []
 
-      try {
-        for (const input of inputs) {
-          const lines = await runShell(input, shellTemplate, timeout)
-          allLines.push(...lines)
-        }
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err)
+      for (const input of inputs) {
+        const result = await runShell(input, shellTemplate, timeout)
+        allLines.push(...result.lines)
+        if (result.error) errors.push(result.error)
       }
 
       const endTime = Date.now()
@@ -269,7 +273,7 @@ export const runPipeline = async (
           end: endTime,
           total: endTime - startTime,
         },
-        ...(error && { error }),
+        ...(errors.length > 0 && { error: errors.join('\n') }),
       }
 
       await writeOutput(JSON.stringify(output), outputPath, !isFirstOutput)
