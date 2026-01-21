@@ -12,17 +12,6 @@
  * 4. Emits ACP session/update notifications
  * 5. Manages session state for multi-turn (stream or iterative mode)
  *
- * @example
- * ```bash
- * # Run with a schema file
- * acp-harness headless --schema ./claude-headless.json
- *
- * # Use in capture pipeline
- * acp-harness capture prompts.jsonl \
- *   acp-harness headless --schema ./claude-headless.json \
- *   -o results.jsonl
- * ```
- *
  * @packageDocumentation
  */
 
