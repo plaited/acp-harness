@@ -50,7 +50,7 @@ describeWithApiKey('Headless Adapter Integration - Gemini', () => {
     // Use headless adapter with Gemini schema
     // Pass both API key variants - Gemini CLI should pick up whichever it prefers
     client = createACPClient({
-      command: ['bun', 'src/headless/headless.ts', '--', '--schema', SCHEMA_PATH],
+      command: ['bun', 'src/headless-cli.ts', '--', '--schema', SCHEMA_PATH],
       timeout: 120000, // 2 min timeout for initialization
       env: {
         GOOGLE_API_KEY: API_KEY,

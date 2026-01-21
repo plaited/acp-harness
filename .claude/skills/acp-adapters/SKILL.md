@@ -271,6 +271,45 @@ gemini --experimental-acp
 # See catalog for more
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+| Issue | Likely Cause | Solution |
+|-------|--------------|----------|
+| Timeout on prompt | JSONPath not matching | Capture raw CLI output, verify paths |
+| "Request timed out" | Result event not detected | Check `result.matchPath/matchValue` |
+| Empty responses | Content extraction failing | Verify array indexing (`[0]`) in paths |
+| Session not found | Wrong session ID | Ensure session/new response is used |
+| CLI hangs silently | `stdin: 'pipe'` without writing | Use `stdin: 'ignore'` when prompt is in args |
+
+> **Important:** Some CLIs (notably Claude Code) hang when spawned with `stdin: 'pipe'` but nothing is written. If the prompt is passed via command-line flag (e.g., `-p "text"`), use `stdin: 'ignore'` instead.
+
+### Quick Debug Steps
+
+1. **Verify CLI works standalone:**
+   ```bash
+   <agent> -p "Say hello" --output-format stream-json --verbose 2>&1 | head -10
+   ```
+
+2. **Test headless adapter directly:**
+   ```bash
+   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}\n' | \
+     bunx @plaited/acp-harness headless --schema ./my-schema.json
+   ```
+
+3. **Check JSONPath extraction:**
+   - Array paths like `$.content[0].text` require array indexing support
+   - Use `jq` to validate: `echo '{"content":[{"text":"hi"}]}' | jq '.content[0].text'`
+
+4. **Run adapter:check for diagnostics:**
+   ```bash
+   bunx @plaited/acp-harness adapter:check \
+     bunx @plaited/acp-harness headless --schema ./my-schema.json --verbose
+   ```
+
+See [Schema Creation Guide](references/schema-creation-guide.md) for detailed debugging workflows.
+
 ## References
 
 | Document | Description |

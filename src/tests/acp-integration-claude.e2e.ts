@@ -46,7 +46,7 @@ describeWithApiKey('Headless Adapter Integration - Claude', () => {
   beforeAll(async () => {
     // Use headless adapter with Claude schema
     client = createACPClient({
-      command: ['bun', 'src/headless/headless.ts', '--', '--schema', SCHEMA_PATH],
+      command: ['bun', 'src/headless-cli.ts', '--', '--schema', SCHEMA_PATH],
       timeout: 120000, // 2 min timeout for initialization
       env: {
         ANTHROPIC_API_KEY: API_KEY,

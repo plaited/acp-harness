@@ -227,15 +227,36 @@ Use these docs when creating schemas for popular agents:
 
 ### Debugging Tips
 
+**1. Capture raw CLI output to analyze:**
 ```bash
 # Capture raw CLI output to analyze
 <agent> exec -o stream-json "Test prompt" 2>&1 | tee raw-output.jsonl
 
 # Pretty-print for analysis
 cat raw-output.jsonl | jq '.'
+```
 
-# Test JSONPath extraction
-echo '{"type":"message","content":"hi"}' | jq '.type'
+**2. Debug headless adapter directly:**
+```bash
+# Test initialize and session creation
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}\n{"jsonrpc":"2.0","id":2,"method":"session/new","params":{}}\n' | \
+  bun src/headless-cli.ts --schema ./my-schema.json 2>&1
+```
+
+**3. Common JSONPath issues:**
+
+| Path | Issue | Fix |
+|------|-------|-----|
+| `$.content[0].text` | Array indexing not working | Verify JSONPath impl supports `[0]` |
+| `$.message.content` | Returns object, not string | Add `[0].text` for array access |
+| `$.result` | No match | Check actual JSON has `type: "result"` |
+
+**4. Test JSONPath extraction manually:**
+```bash
+# Parse actual agent output
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}' | \
+  jq '.message.content[0].text'
+# Expected: "Hello"
 ```
 
 ## Contributing Tested Schemas

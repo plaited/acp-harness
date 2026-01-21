@@ -52,6 +52,8 @@ export type ResultParseResult = ParsedResult | NotResult
  * Supports:
  * - `$.field` - Root field access
  * - `$.nested.field` - Nested field access
+ * - `$.array[0]` - Array index access
+ * - `$.array[0].field` - Combined array and field access
  * - `'literal'` - Literal string values (single quotes)
  *
  * @param obj - Object to extract from
@@ -64,24 +66,56 @@ export const jsonPath = (obj: unknown, path: string): unknown => {
     return path.slice(1, -1)
   }
 
-  // Handle JSONPath expressions (e.g., "$.type", "$.message.text")
+  // Handle JSONPath expressions (e.g., "$.type", "$.message.content[0].text")
   if (!path.startsWith('$.')) {
     return undefined
   }
 
-  const parts = path.slice(2).split('.')
+  // Parse path into segments, handling both dot notation and array indices
+  // e.g., "message.content[0].text" -> ["message", "content", 0, "text"]
+  const segments: (string | number)[] = []
+  const pathBody = path.slice(2) // Remove "$."
+
+  // Split by dots first, then handle array indices within each part
+  for (const part of pathBody.split('.')) {
+    if (!part) continue
+
+    // Check for array index: "content[0]" or just "[0]"
+    const arrayMatch = part.match(/^([^[]*)\[(\d+)\]$/)
+    if (arrayMatch) {
+      const propName = arrayMatch[1]
+      const indexStr = arrayMatch[2]
+      if (propName) {
+        segments.push(propName)
+      }
+      if (indexStr) {
+        segments.push(parseInt(indexStr, 10))
+      }
+    } else {
+      segments.push(part)
+    }
+  }
+
   let current: unknown = obj
 
-  for (const part of parts) {
+  for (const segment of segments) {
     if (current === null || current === undefined) {
       return undefined
     }
 
-    if (typeof current !== 'object') {
-      return undefined
+    if (typeof segment === 'number') {
+      // Array index access
+      if (!Array.isArray(current)) {
+        return undefined
+      }
+      current = current[segment]
+    } else {
+      // Property access
+      if (typeof current !== 'object') {
+        return undefined
+      }
+      current = (current as Record<string, unknown>)[segment]
     }
-
-    current = (current as Record<string, unknown>)[part]
   }
 
   return current

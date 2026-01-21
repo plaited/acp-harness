@@ -153,20 +153,24 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     // Build command for first turn or if no process exists
     if (!session.process || session.process.killed) {
       const args = buildCommand(session, promptText)
+      // First turn: prompt is in command line, use 'ignore' for stdin
+      // Some CLIs (like Claude) hang when stdin is piped but not written to
       session.process = Bun.spawn(args, {
         cwd: session.cwd,
-        stdin: 'pipe',
+        stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'inherit',
       })
     } else {
-      // Write prompt to stdin for subsequent turns
-      const stdin = session.process.stdin as WritableStream<Uint8Array> | undefined
-      if (stdin) {
-        const writer = stdin.getWriter()
-        await writer.write(new TextEncoder().encode(`${promptText}\n`))
-        writer.releaseLock()
-      }
+      // Subsequent turns: spawn new process with resume flag
+      // (stdin-based multi-turn not currently supported)
+      const args = buildCommand(session, promptText)
+      session.process = Bun.spawn(args, {
+        cwd: session.cwd,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'inherit',
+      })
     }
 
     return collectOutput(session, outputParser, onUpdate, timeout)
@@ -184,10 +188,11 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     const fullPrompt = session.history?.buildPrompt(promptText) ?? promptText
 
     // Build and spawn command
+    // Use 'ignore' for stdin - prompt is passed via command line flag
     const args = buildCommand(session, fullPrompt)
     session.process = Bun.spawn(args, {
       cwd: session.cwd,
-      stdin: 'pipe',
+      stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'inherit',
     })
