@@ -178,7 +178,7 @@ If your reference solution fails your own grader:
 Prompts must include a `reference` field:
 
 ```jsonl
-{"id":"test-001","input":"Create a button component","expected":"<button>","reference":"export const Button = () => <button>Click</button>"}
+{"id":"test-001","input":"Create a button component","hint":"<button>","reference":"export const Button = () => <button>Click</button>"}
 ```
 
 ### Output Format

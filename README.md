@@ -22,7 +22,7 @@ acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
 **Prerequisite:** Install an ACP adapter and set your API key:
 
 ```bash
-npm install -g @anthropic-ai/claude-code-acp
+npm install -g @zed-industries/claude-code-acp
 export ANTHROPIC_API_KEY=sk-...
 ```
 
@@ -121,9 +121,17 @@ Discover, create, and validate ACP adapters for agent integration.
 ## Input Format
 
 ```jsonl
-{"id":"test-001","input":"Create a primary button","expected":"should contain <button>","metadata":{"category":"ui"}}
-{"id":"test-002","input":"Fix the TypeScript error","metadata":{"category":"bugfix"}}
+{"id":"test-001","input":"Create a primary button","hint":"should contain <button>","metadata":{"category":"ui"}}
+{"id":"test-002","input":["Create a component","Now add tests"],"metadata":{"category":"multi-turn"}}
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique identifier |
+| `input` | Yes | Single prompt (string) or conversation turns (string[]) |
+| `hint` | No | Grader context - what to look for |
+| `reference` | No | Reference solution (for validate-refs) |
+| `metadata` | No | Tags, category, difficulty for filtering |
 
 ## Output Format
 
@@ -134,12 +142,12 @@ The harness outputs full trajectory JSONL (`CaptureResult` schema):
   "id": "test-001",
   "input": "Create a primary button",
   "output": "Here's a button component...",
-  "expected": "should contain <button>",
+  "hint": "should contain <button>",
   "trajectory": [...],
-  "metadata": {"category": "ui", "agent": "bunx claude-code-acp"},
-  "timing": {"start": 1234567890, "end": 1234567900},
+  "metadata": {"category": "ui", "agent": "bunx claude-code-acp", "trajectoryRichness": "full", "turnCount": 1},
+  "timing": {"start": 1234567890, "end": 1234567900, "sessionCreation": 234, "total": 10},
   "toolErrors": false,
-  "score": {"pass": true, "score": 1.0, "reasoning": "Contains expected"}
+  "score": {"pass": true, "score": 1.0, "reasoning": "Contains hint"}
 }
 ```
 
@@ -147,6 +155,9 @@ Key fields:
 - `toolErrors`: Boolean indicating if any tool calls failed
 - `score`: Grader result (only if `--grader` provided)
 - `trajectory`: Full execution trace (thoughts, messages, tool calls, plans)
+- `metadata.trajectoryRichness`: `"full"` | `"messages-only"` | `"minimal"`
+- `timing.sessionCreation`: Time to initialize session (ms)
+- `timing.total`: End-to-end duration (ms)
 
 ## Graders
 
@@ -159,12 +170,12 @@ Export a `grade` function:
 ```typescript
 import type { Grader } from '@plaited/acp-harness/schemas'
 
-export const grade: Grader = async ({ input, output, expected, trajectory }) => {
-  const pass = output.toLowerCase().includes(expected?.toLowerCase() ?? '')
+export const grade: Grader = async ({ input, output, hint, trajectory }) => {
+  const pass = output.toLowerCase().includes(hint?.toLowerCase() ?? '')
   return {
     pass,
     score: pass ? 1.0 : 0.0,
-    reasoning: pass ? 'Contains expected answer' : 'Missing expected answer'
+    reasoning: pass ? 'Contains hint content' : 'Missing hint content'
   }
 }
 ```
@@ -184,13 +195,13 @@ import sys
 
 data = json.load(sys.stdin)
 output = data["output"].lower()
-expected = (data.get("expected") or "").lower()
+hint = (data.get("hint") or "").lower()
 
-pass_result = expected in output if expected else True
+pass_result = hint in output if hint else True
 print(json.dumps({
     "pass": pass_result,
     "score": 1.0 if pass_result else 0.0,
-    "reasoning": "Contains expected" if pass_result else "Missing expected"
+    "reasoning": "Contains hint" if pass_result else "Missing hint"
 }))
 ```
 
@@ -200,7 +211,7 @@ acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py
 ```
 
 **Protocol:**
-- Input (stdin): `{"input": "...", "output": "...", "expected": "...", "trajectory": [...]}`
+- Input (stdin): `{"input": "...", "output": "...", "hint": "...", "trajectory": [...]}`
 - Output (stdout): `{"pass": true, "score": 1.0, "reasoning": "..."}`
 
 ## Downstream Integration
@@ -227,7 +238,7 @@ bun test             # Run unit tests
 ## Requirements
 
 - **Runtime:** Bun >= 1.2.9
-- **ACP Adapter:** `@anthropic-ai/claude-code-acp` or compatible
+- **ACP Adapter:** `@zed-industries/claude-code-acp` or compatible
 - **API Key:** `ANTHROPIC_API_KEY` environment variable
 
 ## License

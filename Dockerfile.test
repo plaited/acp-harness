@@ -1,0 +1,26 @@
+# Dockerfile for integration tests requiring Docker environment
+# Uses same bun version as CI for consistency
+#
+# Integration tests live in integration_tests/ directories and require:
+# - External API keys (Anthropic, Gemini)
+# - Global CLI tools (claude, gemini)
+
+FROM oven/bun:1.2.9
+
+# Install git (required for some operations)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Install global CLI tools for integration tests
+RUN bun install --global @google/gemini-cli
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+WORKDIR /app
+
+# Copy source
+COPY . .
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Run integration tests (wrapper handles Bun cleanup crash workaround)
+CMD ["bash", "scripts/bun-test-wrapper.sh"]

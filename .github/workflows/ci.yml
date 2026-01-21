@@ -56,13 +56,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: |
-          bun install --global @google/gemini-cli
-          curl -fsSL https://claude.ai/install.sh | bash
-          bun install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
-      - name: Run headless integration tests
+      - name: Run ACP integration tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: bun run test:integration
+        run: bun test ./src/tests/acp-integration.docker.ts
