@@ -64,7 +64,7 @@ Examples:
   # Run headless adapter with schema
   agent-eval-harness headless --schema ./claude-headless.json
 
-Documentation: https://github.com/plaited/acp-harness
+Documentation: https://github.com/plaited/agent-eval-harness
 `)
 }
 

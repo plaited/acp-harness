@@ -1,9 +1,9 @@
 /**
- * Constants for ACP client and harness operations.
+ * Constants for harness and JSON-RPC protocol operations.
  *
  * @remarks
  * Contains all constant values used across the implementation:
- * - ACP protocol method names and version
+ * - JSON-RPC method names and protocol version
  * - JSON-RPC error codes
  * - Harness defaults (timeouts, preview limits)
  *
@@ -11,11 +11,11 @@
  */
 
 // ============================================================================
-// ACP Protocol Methods
+// JSON-RPC Protocol Methods
 // ============================================================================
 
-/** ACP method names */
-export const ACP_METHODS = {
+/** JSON-RPC method names for headless adapter protocol */
+export const PROTOCOL_METHODS = {
   // Lifecycle
   INITIALIZE: 'initialize',
   SHUTDOWN: 'shutdown',
@@ -34,11 +34,11 @@ export const ACP_METHODS = {
 } as const
 
 // ============================================================================
-// ACP Protocol Version
+// Protocol Version
 // ============================================================================
 
-/** Current protocol version - SDK uses number type */
-export const ACP_PROTOCOL_VERSION = 1 as const
+/** Current protocol version */
+export const PROTOCOL_VERSION = 1 as const
 
 // ============================================================================
 // JSON-RPC Error Codes
@@ -55,14 +55,14 @@ export const JSON_RPC_ERRORS = {
 } as const
 
 // ============================================================================
-// ACP Client Defaults
+// Client Defaults
 // ============================================================================
 
-/** Default ACP Client Name */
-export const DEFAULT_ACP_CLIENT_NAME = 'plaited-acp-client'
+/** Default client name for protocol handshake */
+export const DEFAULT_CLIENT_NAME = 'plaited-eval-harness'
 
-/** Default timeout for ACP operations in milliseconds */
-export const DEFAULT_ACP_TIMEOUT = 30000
+/** Default timeout for protocol operations in milliseconds */
+export const DEFAULT_PROTOCOL_TIMEOUT = 30000
 
 /** Default polling interval for streaming updates in milliseconds */
 export const DEFAULT_POLLING_INTERVAL = 50

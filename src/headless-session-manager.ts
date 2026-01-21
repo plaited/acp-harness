@@ -5,7 +5,7 @@
  * Manages the lifecycle of CLI agent sessions including:
  * - Process spawning and tracking
  * - Stream mode (persistent process) vs iterative mode (new process per turn)
- * - Output parsing and ACP update emission
+ * - Output parsing and update emission
  * - Session state management
  *
  * @packageDocumentation
@@ -48,7 +48,7 @@ export type ProcessExitInfo = {
   timedOut: boolean
 }
 
-/** Update callback for emitting ACP session updates */
+/** Update callback for emitting session updates */
 export type UpdateCallback = (update: ParsedUpdate) => void
 
 /** Prompt result with final output */

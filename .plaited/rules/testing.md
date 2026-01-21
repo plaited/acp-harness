@@ -31,12 +31,12 @@ Use `test` instead of `it` in test files for consistency:
 
 ```typescript
 // ✅ Good
-test('should create ACP client correctly', () => {
+test('should create session manager correctly', () => {
   // ...
 })
 
 // ❌ Avoid
-it('should create ACP client correctly', () => {
+it('should create session manager correctly', () => {
   // ...
 })
 ```

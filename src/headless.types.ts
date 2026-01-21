@@ -1,5 +1,5 @@
 /**
- * Type exports for headless ACP adapter.
+ * Type exports for headless adapter.
  *
  * @remarks
  * Re-exports all types from the schemas module for external consumers.

@@ -4,7 +4,7 @@
  *
  * @remarks
  * A minimal stdio-based MCP server that provides add/subtract/multiply/divide tools.
- * Used to verify ACP client works with MCP servers.
+ * Used to verify the harness works with MCP servers.
  */
 
 type JsonRpcRequest = {

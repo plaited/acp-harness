@@ -35,7 +35,7 @@ type TrajectoryStep =
   | { type: 'message'; content: string; timestamp: number; stepId?: string }
   | {
       type: 'tool_call'
-      name: string              // Tool title from ACP SDK
+      name: string              // Tool title
       status: string            // pending, in_progress, completed, failed
       input?: unknown           // Raw input parameters
       output?: unknown          // Raw output

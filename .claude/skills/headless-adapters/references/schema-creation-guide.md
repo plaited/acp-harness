@@ -4,7 +4,7 @@ Step-by-step workflow for creating headless adapter schemas for CLI coding agent
 
 ## Overview
 
-The headless adapter transforms any CLI agent with JSON output into an ACP-compatible adapter. You just need a schema file describing how to interact with the CLI.
+The headless adapter transforms any CLI agent with JSON output into a protocol-compatible adapter. You just need a schema file describing how to interact with the CLI.
 
 ## Workflow
 
@@ -81,7 +81,7 @@ AGENT_API_KEY=... <agent> exec -o stream-json "Say hello" | jq -c '.'
 
 Analyze the output to create event mappings:
 
-| JSON Event | ACP Event Type | Extract Fields |
+| JSON Event | Event Type | Extract Fields |
 |------------|---------------|----------------|
 | `{"type": "message", ...}` | `message` | `$.content` |
 | `{"type": "tool_use", ...}` | `tool_call` | `$.name` (title), `"pending"` (status) |
@@ -213,7 +213,7 @@ Debug mode shows:
 
 **Not yet compatible:** [Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) (no JSON output)
 
-> **Note:** For detailed ACP protocol questions during schema creation, use the `agent-client-protocol-docs` MCP server. See SKILL.md for configuration.
+> **Note:** For detailed protocol questions during schema creation, use the `agent-client-protocol-docs` MCP server. See SKILL.md for configuration.
 
 ## Troubleshooting
 

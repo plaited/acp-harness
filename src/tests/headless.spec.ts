@@ -1,5 +1,5 @@
 /**
- * Unit tests for headless ACP adapter factory.
+ * Unit tests for headless adapter factory.
  *
  * @remarks
  * Tests cover:

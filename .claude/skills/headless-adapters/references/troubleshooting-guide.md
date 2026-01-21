@@ -463,7 +463,7 @@ Output events use a two-step process:
 
 This means:
 - Check if `$.type` equals `"message"`
-- If yes, emit an ACP `message` update
+- If yes, emit a session `message` update
 - Extract content from `$.text`
 
 ### Wildcard Matching

@@ -10,11 +10,11 @@ Use named re-export files at the parent level, matching the folder name:
 
 ```
 src/
-├── acp/                 # Feature module
-│   ├── acp.types.ts
-│   ├── acp.schemas.ts
-│   └── acp.ts           # Main implementation
-├── acp.ts               # Re-exports public API from acp/
+├── capture/             # Feature module
+│   ├── capture.types.ts
+│   ├── capture.schemas.ts
+│   └── capture.ts       # Main implementation
+├── capture.ts           # Re-exports public API from capture/
 ├── utils/
 │   └── format.ts
 └── utils.ts             # Re-exports public API from utils/
@@ -26,9 +26,9 @@ When a package has one primary feature, expose that re-export file directly as m
 
 ```json
 {
-  "main": "src/acp.ts",
+  "main": "src/capture.ts",
   "exports": {
-    ".": "./src/acp.ts",
+    ".": "./src/capture.ts",
     "./utils": "./src/utils.ts"
   }
 }
@@ -43,7 +43,7 @@ Always include `.ts` extensions in imports. Bun runs TypeScript natively—no co
 ```typescript
 // ✅ Good
 import { Config } from './module.types.ts'
-import { createClient } from '../acp/acp.ts'
+import { createClient } from '../capture/capture.ts'
 
 // ❌ Avoid
 import { Config } from './module.types'

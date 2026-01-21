@@ -217,7 +217,7 @@ export const summarize = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness summarize <results.jsonl> [options]
+Usage: agent-eval-harness summarize <results.jsonl> [options]
 
 Arguments:
   results.jsonl     Input file with capture results
@@ -233,10 +233,10 @@ Output Formats:
 
 Examples:
   # Summary JSONL for jq analysis
-  acp-harness summarize results.jsonl -o summary.jsonl
+  agent-eval-harness summarize results.jsonl -o summary.jsonl
 
   # Markdown for LLM evaluation
-  acp-harness summarize results.jsonl --markdown -o results.md
+  agent-eval-harness summarize results.jsonl --markdown -o results.md
 `)
     return
   }

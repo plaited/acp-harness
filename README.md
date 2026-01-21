@@ -1,10 +1,10 @@
-# @plaited/acp-harness
+# @plaited/agent-eval-harness
 
-[![npm version](https://img.shields.io/npm/v/@plaited/acp-harness.svg)](https://www.npmjs.com/package/@plaited/acp-harness)
-[![CI](https://github.com/plaited/acp-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/plaited/acp-harness/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@plaited/agent-eval-harness.svg)](https://www.npmjs.com/package/@plaited/agent-eval-harness)
+[![CI](https://github.com/plaited/agent-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/plaited/agent-eval-harness/actions/workflows/ci.yml)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-CLI tool for capturing agent trajectories from ACP-compatible agents. Execute prompts, capture full trajectories (tools, thoughts, plans), and output structured JSONL for downstream scoring. Available as both a CLI tool and as installable skills for AI coding agents.
+CLI tool for capturing agent trajectories from headless CLI agents. Execute prompts, capture full trajectories (tools, thoughts, plans), and output structured JSONL for downstream scoring. Available as both a CLI tool and as installable skills for AI coding agents.
 
 ## CLI Tool
 
@@ -13,59 +13,51 @@ Use these tools directly via the CLI without installation:
 ```bash
 # Using built-in headless adapter (recommended - no extra install needed)
 export ANTHROPIC_API_KEY=sk-...
-bunx @plaited/acp-harness capture prompts.jsonl \
-  bunx @plaited/acp-harness headless --schema ./schemas/claude-headless.json \
+bunx @plaited/agent-eval-harness capture prompts.jsonl \
+  --schema ./schemas/claude-headless.json \
   -o results.jsonl
-
-# Or with an external ACP adapter
-bunx @plaited/acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
 ```
 
-**Prerequisite:** Set your API key. The `headless` command works with any CLI agent that supports JSON output - no adapter installation required:
+**Prerequisite:** Set your API key. The harness works with any CLI agent that supports JSON output - just provide a schema describing how to interact with it:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...   # For Claude
 export GEMINI_API_KEY=...         # For Gemini
 ```
 
-Pre-built schemas are available in `.claude/skills/acp-adapters/schemas/` for Claude and Gemini.
+Pre-built schemas are available in `.claude/skills/headless-adapters/schemas/` for Claude and Gemini.
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
-| `capture <prompts> <cmd>` | Trajectory capture (full JSONL) |
-| `trials <prompts> <cmd>` | Multi-run with pass@k metrics |
+| `capture <prompts> --schema <path>` | Trajectory capture (full JSONL) |
+| `trials <prompts> --schema <path>` | Multi-run with pass@k metrics |
 | `summarize <results>` | Derive compact views from results |
 | `calibrate <results>` | Sample failures for review |
 | `validate-refs <prompts>` | Check reference solutions |
 | `balance <prompts>` | Analyze test set coverage |
 | `schemas [name]` | Export JSON schemas |
 | `headless --schema <path>` | Schema-driven adapter for any CLI agent |
-| `adapter:check <cmd>` | Validate adapter ACP compliance |
 
 ### Examples
 
 ```bash
 # Capture trajectories using headless adapter (recommended)
-bunx @plaited/acp-harness capture prompts.jsonl \
-  bunx @plaited/acp-harness headless --schema ./schemas/claude-headless.json \
+bunx @plaited/agent-eval-harness capture prompts.jsonl \
+  --schema ./schemas/claude-headless.json \
   -o results.jsonl
 
-# Run trials for pass@k analysis
-bunx @plaited/acp-harness trials prompts.jsonl \
-  bunx @plaited/acp-harness headless --schema ./schemas/claude-headless.json \
-  -k 5 --grader ./grader.ts
+# Run trials for pass@k analysis with debug mode
+bunx @plaited/agent-eval-harness trials prompts.jsonl \
+  --schema ./schemas/claude-headless.json \
+  -k 5 --grader ./grader.ts --debug
 
 # Summarize results
-bunx @plaited/acp-harness summarize results.jsonl -o summary.jsonl
+bunx @plaited/agent-eval-harness summarize results.jsonl -o summary.jsonl
 
 # Export schemas
-bunx @plaited/acp-harness schemas CaptureResult --json
-
-# Validate adapter compliance
-bunx @plaited/acp-harness adapter:check \
-  bunx @plaited/acp-harness headless --schema ./schemas/claude-headless.json
+bunx @plaited/agent-eval-harness schemas CaptureResult --json
 ```
 
 ## Skills for AI Agents
@@ -73,14 +65,14 @@ bunx @plaited/acp-harness adapter:check \
 **Install skills** for use with AI coding agents:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project acp-harness
+curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project agent-eval-harness
 ```
 
 Replace `<agent-name>` with your agent: `claude`, `cursor`, `copilot`, `opencode`, `amp`, `goose`, `factory`
 
 ### Available Skills
 
-#### ACP Harness
+#### Agent Eval Harness
 
 CLI tool for capturing agent trajectories, optimized for TypeScript/JavaScript projects using Bun.
 
@@ -102,23 +94,20 @@ CLI tool for capturing agent trajectories, optimized for TypeScript/JavaScript p
 - Building regression test fixtures for agent behavior
 - Comparing agent responses across configurations
 
-#### ACP Adapters
+#### Headless Adapters
 
-Discover, create, and validate ACP adapters for agent integration.
+Schema-driven adapters for headless CLI agent integration.
 
 **Commands:**
 
 | Command | Description |
 |---------|-------------|
 | `headless` | Schema-driven adapter for any CLI agent |
-| `adapter:scaffold` | Generate new adapter project with handlers |
-| `adapter:check` | Validate ACP protocol compliance |
 
 **Use cases:**
 - Wrapping headless CLI agents with schema-driven adapter
 - Finding existing adapters for your agent
-- Building custom ACP adapters from scratch
-- Validating adapter implementations
+- Creating new schemas for CLI agents
 
 ## Input Format
 
@@ -134,6 +123,7 @@ Discover, create, and validate ACP adapters for agent integration.
 | `hint` | No | Grader context - what to look for |
 | `reference` | No | Reference solution (for validate-refs) |
 | `metadata` | No | Tags, category, difficulty for filtering |
+| `timeout` | No | Override default timeout for this prompt (ms) |
 
 ## Output Format
 
@@ -146,9 +136,10 @@ The harness outputs full trajectory JSONL (`CaptureResult` schema):
   "output": "Here's a button component...",
   "hint": "should contain <button>",
   "trajectory": [...],
-  "metadata": {"category": "ui", "agent": "bunx claude-code-acp", "trajectoryRichness": "full", "turnCount": 1},
-  "timing": {"start": 1234567890, "end": 1234567900, "sessionCreation": 234, "total": 10},
+  "metadata": {"category": "ui", "trajectoryRichness": "full", "turnCount": 1},
+  "timing": {"start": 1234567890, "end": 1234567900, "total": 10},
   "toolErrors": false,
+  "exitInfo": {"exitCode": 0},
   "score": {"pass": true, "score": 1.0, "reasoning": "Contains hint"}
 }
 ```
@@ -158,7 +149,7 @@ Key fields:
 - `score`: Grader result (only if `--grader` provided)
 - `trajectory`: Full execution trace (thoughts, messages, tool calls, plans)
 - `metadata.trajectoryRichness`: `"full"` | `"messages-only"` | `"minimal"`
-- `timing.sessionCreation`: Time to initialize session (ms)
+- `exitInfo`: Process exit information (`exitCode`, `signal`, `timedOut`)
 - `timing.total`: End-to-end duration (ms)
 
 ## Graders
@@ -170,7 +161,7 @@ Graders score agent outputs. The harness supports two types:
 Export a `grade` function:
 
 ```typescript
-import type { Grader } from '@plaited/acp-harness/schemas'
+import type { Grader } from '@plaited/agent-eval-harness/schemas'
 
 export const grade: Grader = async ({ input, output, hint, trajectory }) => {
   const pass = output.toLowerCase().includes(hint?.toLowerCase() ?? '')
@@ -183,7 +174,7 @@ export const grade: Grader = async ({ input, output, hint, trajectory }) => {
 ```
 
 ```bash
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts
+agent-eval-harness capture prompts.jsonl --schema ./claude.json --grader ./grader.ts
 ```
 
 ### Polyglot Graders (Python, etc.)
@@ -209,7 +200,7 @@ print(json.dumps({
 
 ```bash
 chmod +x grader.py
-acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.py
+agent-eval-harness capture prompts.jsonl --schema ./claude.json --grader ./grader.py
 ```
 
 **Protocol:**
@@ -237,13 +228,13 @@ bun run check        # Type check + lint + format
 bun test             # Run unit tests
 
 # Run integration tests in Docker (requires API keys)
-ANTHROPIC_API_KEY=sk-... docker compose -f docker-compose.test.yml run --rm acp-test
+ANTHROPIC_API_KEY=sk-... docker compose -f docker-compose.test.yml run --rm test
 ```
 
 ## Requirements
 
 - **Runtime:** Bun >= 1.2.9
-- **ACP Adapter:** Built-in `headless` command (recommended) or external adapter
+- **Schema:** JSON schema describing CLI agent interaction (see `.claude/skills/headless-adapters/schemas/`)
 - **API Key:** `ANTHROPIC_API_KEY` for Claude, `GEMINI_API_KEY` for Gemini
 
 ## License

@@ -7,7 +7,7 @@ import { loadPrompts } from '../capture.ts'
 // ============================================================================
 
 describe('loadPrompts', () => {
-  const testPromptFile = '/tmp/acp-harness-test-prompts.jsonl'
+  const testPromptFile = '/tmp/agent-eval-harness-test-prompts.jsonl'
 
   beforeEach(async () => {
     await Bun.$`rm -f ${testPromptFile}`.nothrow()

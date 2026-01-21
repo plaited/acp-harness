@@ -372,7 +372,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
 
-      - name: Install ACP adapter
+      - name: Install harness
         run: npm install -g @zed-industries/claude-code-acp
 
       - name: Install dependencies

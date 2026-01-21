@@ -133,7 +133,7 @@ export const validateRefs = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness validate-refs <prompts.jsonl> --grader <grader.ts> [options]
+Usage: agent-eval-harness validate-refs <prompts.jsonl> --grader <grader.ts> [options]
 
 Arguments:
   prompts.jsonl     Input file with prompts (must have 'reference' field)
@@ -155,7 +155,7 @@ Prompt Format:
   }
 
 Examples:
-  acp-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
+  agent-eval-harness validate-refs prompts.jsonl --grader ./grader.ts -o validation.jsonl
 `)
     return
   }

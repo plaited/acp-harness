@@ -6,7 +6,7 @@ import { runSchemas } from '../schemas-cli.ts'
 // ============================================================================
 
 describe('runSchemas', () => {
-  const testOutputDir = '/tmp/acp-harness-test-schemas'
+  const testOutputDir = '/tmp/agent-eval-harness-test-schemas'
 
   beforeEach(async () => {
     // Clean up test directory

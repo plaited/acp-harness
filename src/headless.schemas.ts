@@ -1,5 +1,5 @@
 /**
- * Zod schemas for headless ACP adapter configuration.
+ * Zod schemas for headless adapter configuration.
  *
  * @remarks
  * These schemas define how to interact with ANY headless CLI agent via a
@@ -16,11 +16,11 @@ import { z } from 'zod'
 // ============================================================================
 
 /**
- * Schema for matching CLI output to ACP update types.
+ * Schema for matching CLI output to session update types.
  *
  * @remarks
  * Uses JSONPath-like patterns to match events in CLI JSON output
- * and map them to ACP session update types.
+ * and map them to session update types.
  */
 export const OutputEventMatchSchema = z.object({
   /** JSONPath to match event type in CLI output (e.g., "$.type") */
@@ -53,18 +53,18 @@ export const OutputEventExtractSchema = z.object({
 export type OutputEventExtract = z.infer<typeof OutputEventExtractSchema>
 
 /**
- * Schema for mapping CLI output events to ACP update types.
+ * Schema for mapping CLI output events to session update types.
  *
  * @remarks
  * Each mapping specifies:
  * 1. How to match events (match.path + match.value)
- * 2. What ACP update type to emit (emitAs)
+ * 2. What session update type to emit (emitAs)
  * 3. What content to extract (extract)
  */
 export const OutputEventMappingSchema = z.object({
   /** Matching criteria for CLI output */
   match: OutputEventMatchSchema,
-  /** ACP session update type to emit */
+  /** session update type to emit */
   emitAs: z.enum(['thought', 'tool_call', 'message', 'plan']),
   /** Content extraction configuration */
   extract: OutputEventExtractSchema.optional(),

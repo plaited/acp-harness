@@ -3,7 +3,7 @@
  *
  * @remarks
  * Re-exports all harness command modules for programmatic use.
- * For CLI usage, run `acp-harness <command> --help`.
+ * For CLI usage, run `agent-eval-harness <command> --help`.
  *
  * **Commands:**
  * - `capture` - Core trajectory capture

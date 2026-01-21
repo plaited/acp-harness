@@ -288,7 +288,7 @@ export const calibrate = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness calibrate <results.jsonl> [options]
+Usage: agent-eval-harness calibrate <results.jsonl> [options]
 
 Arguments:
   results.jsonl     Input file with scored capture results
@@ -305,10 +305,10 @@ Output:
 
 Examples:
   # Sample failures for review
-  acp-harness calibrate results.jsonl --sample 10 -o calibration.md
+  agent-eval-harness calibrate results.jsonl --sample 10 -o calibration.md
 
   # Re-score with different grader to compare
-  acp-harness calibrate results.jsonl --grader ./loose-grader.ts -o comparison.md
+  agent-eval-harness calibrate results.jsonl --grader ./loose-grader.ts -o comparison.md
 `)
     return
   }

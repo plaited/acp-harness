@@ -2,7 +2,7 @@
  * Generic output parser for headless CLI agents.
  *
  * @remarks
- * Uses schema-defined mappings to convert CLI JSON output into ACP session updates.
+ * Uses schema-defined mappings to convert CLI JSON output into session updates.
  * Supports JSONPath-like expressions for matching and extraction.
  *
  * @packageDocumentation
@@ -14,7 +14,7 @@ import type { HeadlessAdapterConfig, OutputEventMapping } from './headless.schem
 // Types
 // ============================================================================
 
-/** ACP session update types */
+/** session update types */
 export type SessionUpdateType = 'thought' | 'tool_call' | 'message' | 'plan'
 
 /** Parsed session update from CLI output */
@@ -166,7 +166,7 @@ export const jsonPathString = (obj: unknown, path: string): string | undefined =
  * The parser uses the schema's outputEvents mappings to:
  * 1. Match incoming JSON lines against patterns
  * 2. Extract content using JSONPath expressions
- * 3. Emit ACP session update objects
+ * 3. Emit session update objects
  *
  * @param config - Headless adapter configuration
  * @returns Parser function for individual lines

@@ -17,7 +17,7 @@
 
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
-import { ACP_PROTOCOL_VERSION } from './constants.ts'
+import { PROTOCOL_VERSION } from './constants.ts'
 import { type HeadlessAdapterConfig, parseHeadlessConfig } from './headless.schemas.ts'
 import { createSessionManager, type SessionManager } from './headless-session-manager.ts'
 
@@ -104,12 +104,12 @@ const createHandlers = (schema: HeadlessAdapterConfig, sessions: SessionManager)
   const handleInitialize = async (params: unknown): Promise<unknown> => {
     const { protocolVersion } = params as { protocolVersion: number }
 
-    if (protocolVersion !== ACP_PROTOCOL_VERSION) {
+    if (protocolVersion !== PROTOCOL_VERSION) {
       throw new Error(`Unsupported protocol version: ${protocolVersion}`)
     }
 
     return {
-      protocolVersion: ACP_PROTOCOL_VERSION,
+      protocolVersion: PROTOCOL_VERSION,
       agentInfo: {
         name: schema.name,
         version: '1.0.0',
@@ -160,9 +160,9 @@ const createHandlers = (schema: HeadlessAdapterConfig, sessions: SessionManager)
 
     // Execute prompt and stream updates
     const result = await sessions.prompt(sessionId, promptText, (update) => {
-      // Map parsed update to ACP session update format
-      const acpUpdate = mapToACPUpdate(update)
-      sendSessionUpdate(sessionId, acpUpdate)
+      // Map parsed update to session update format
+      const sessionUpdate = mapToSessionUpdate(update)
+      sendSessionUpdate(sessionId, sessionUpdate)
     })
 
     return {
@@ -188,9 +188,9 @@ const createHandlers = (schema: HeadlessAdapterConfig, sessions: SessionManager)
 }
 
 /**
- * Maps a parsed update to ACP session update format.
+ * Maps a parsed update to session update format.
  */
-const mapToACPUpdate = (update: { type: string; content?: string; title?: string; status?: string }): unknown => {
+const mapToSessionUpdate = (update: { type: string; content?: string; title?: string; status?: string }): unknown => {
   switch (update.type) {
     case 'thought':
       return {

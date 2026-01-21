@@ -338,9 +338,9 @@ export const TimingSchema = z.object({
   sessionCreation: z.number(),
   /** Total duration (end - start) in milliseconds */
   total: z.number(),
-  /** Input tokens consumed (if available from ACP adapter) */
+  /** Input tokens consumed (if available from headless adapter) */
   inputTokens: z.number().optional(),
-  /** Output tokens generated (if available from ACP adapter) */
+  /** Output tokens generated (if available from headless adapter) */
   outputTokens: z.number().optional(),
 })
 

@@ -8,12 +8,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/plaited/acp-harness.git"
+    "url": "git+https://github.com/plaited/agent-eval-harness.git"
   },
   "bugs": {
-    "url": "https://github.com/plaited/acp-harness/issues"
+    "url": "https://github.com/plaited/agent-eval-harness/issues"
   },
-  "homepage": "https://github.com/plaited/acp-harness/tree/main#readme",
+  "homepage": "https://github.com/plaited/agent-eval-harness/tree/main#readme",
   "bin": {
     "agent-eval-harness": "./bin/cli.ts"
   },

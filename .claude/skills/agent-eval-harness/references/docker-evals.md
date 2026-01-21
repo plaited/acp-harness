@@ -1,6 +1,6 @@
 # Running Evals in Docker
 
-Docker provides a consistent, isolated environment for running ACP evaluations. This guide covers lessons learned from real debugging sessions.
+Docker provides a consistent, isolated environment for running agent evaluations. This guide covers lessons learned from real debugging sessions.
 
 ## Why Docker?
 
@@ -147,7 +147,7 @@ test-integration:
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@v4
-    - name: Run ACP integration tests
+    - name: Run integration tests
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

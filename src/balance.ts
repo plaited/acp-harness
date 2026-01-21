@@ -218,7 +218,7 @@ export const balance = async (args: string[]): Promise<void> => {
   if (values.help) {
     // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
-Usage: acp-harness balance <prompts.jsonl> [options]
+Usage: agent-eval-harness balance <prompts.jsonl> [options]
 
 Arguments:
   prompts.jsonl     Input file with prompts
@@ -234,10 +234,10 @@ Output:
 
 Examples:
   # Analyze by default 'category' key
-  acp-harness balance prompts.jsonl -o balance.json
+  agent-eval-harness balance prompts.jsonl -o balance.json
 
   # Analyze by custom metadata key
-  acp-harness balance prompts.jsonl --key difficulty -o balance.json
+  agent-eval-harness balance prompts.jsonl --key difficulty -o balance.json
 `)
     return
   }
