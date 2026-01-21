@@ -57,6 +57,8 @@ export type SessionManagerConfig = {
   schema: HeadlessAdapterConfig
   /** Default timeout for operations in ms */
   timeout?: number
+  /** Whether to show debug output (constructed commands) */
+  verbose?: boolean
 }
 
 // ============================================================================
@@ -84,7 +86,7 @@ export type SessionManagerConfig = {
  * @returns Session manager with create, prompt, and cancel methods
  */
 export const createSessionManager = (config: SessionManagerConfig) => {
-  const { schema, timeout = 60000 } = config
+  const { schema, timeout = 60000, verbose = false } = config
   const sessions = new Map<string, Session>()
   const outputParser = createOutputParser(schema)
 
@@ -262,6 +264,12 @@ export const createSessionManager = (config: SessionManagerConfig) => {
         // Positional argument (no flag)
         args.push(promptText)
       }
+    }
+
+    // Debug output: show constructed command
+    if (verbose) {
+      const stdinNote = schema.prompt.stdin ? ' (+ stdin)' : ''
+      console.error(`[headless] Command: ${args.join(' ')}${stdinNote}`)
     }
 
     return args
