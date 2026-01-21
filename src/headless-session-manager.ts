@@ -211,9 +211,10 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       stderr: 'inherit',
     })
 
-    // If using stdin, write the prompt
+    // If using stdin, write the prompt and close stdin
+    // (iterative mode spawns new process per turn, so stdin should close after writing)
     if (schema.prompt.stdin && session.process) {
-      writePromptToStdin(session.process, fullPrompt)
+      writePromptToStdin(session.process, fullPrompt, true)
     }
 
     const result = await collectOutput(session, outputParser, onUpdate, timeout)
@@ -336,15 +337,24 @@ const generateSessionId = (): string => {
  * - `'ignore'` → null (not writable)
  * - number → file descriptor (not a FileSink)
  *
+ * **Closing stdin:** When `closeAfterWrite` is true, the stdin stream is
+ * closed after writing. This is required for CLIs that read from stdin
+ * with `-` and wait for EOF before processing (e.g., Codex). For stream
+ * mode sessions where stdin stays open for subsequent prompts, pass false.
+ *
  * @param process - Subprocess with stdin stream
  * @param prompt - Prompt text to write
+ * @param closeAfterWrite - Whether to close stdin after writing (default: false)
  *
  * @internal
  */
-const writePromptToStdin = (process: Subprocess, prompt: string): void => {
+const writePromptToStdin = (process: Subprocess, prompt: string, closeAfterWrite = false): void => {
   if (process.stdin && typeof process.stdin !== 'number') {
     process.stdin.write(`${prompt}\n`)
     process.stdin.flush()
+    if (closeAfterWrite) {
+      process.stdin.end()
+    }
   }
 }
 
