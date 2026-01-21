@@ -41,7 +41,7 @@ jobs:
       - name: Run test
         run: bun run test
 
-  test-e2e:
+  test-integration:
     needs: changes
     if: ${{ needs.changes.outputs.acp == 'true' }}
     runs-on: ubuntu-latest

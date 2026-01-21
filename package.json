@@ -28,10 +28,8 @@
     "./bin/**",
     "!./src/**/tests/*",
     "!./src/**/*.spec.ts",
-    "!./src/**/*.e2e.ts",
     "!./bin/**/tests/*",
-    "!./bin/**/*.spec.ts",
-    "!./bin/**/*.e2e.ts"
+    "!./bin/**/*.spec.ts"
   ],
   "publishConfig": {
     "access": "public"

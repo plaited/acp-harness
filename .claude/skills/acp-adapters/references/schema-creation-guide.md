@@ -268,8 +268,8 @@ echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}
 
 Once your schema is working:
 
-1. Run the E2E test suite with your schema
+1. Run the integration test suite with your schema
 2. Submit a PR to add it to the `schemas/` directory
-3. Include the E2E test file as `acp-integration-<agent>.e2e.ts`
+3. Include the integration test file as `integration_tests/acp-<agent>.spec.ts`
 
-Only schemas with passing E2E tests are included in the official distribution.
+Only schemas with passing integration tests are included in the official distribution.

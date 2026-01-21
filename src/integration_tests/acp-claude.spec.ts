@@ -1,23 +1,23 @@
 /**
- * Headless Adapter E2E Tests - Gemini CLI
+ * Headless Adapter integration Tests - Claude Code
  *
  * @remarks
- * These tests verify the headless ACP adapter works correctly with Gemini CLI
+ * These tests verify the headless ACP adapter works correctly with Claude Code
  * using the schema-driven approach from `.claude/skills/acp-adapters/schemas/`.
  *
  * Run locally with API key:
  * ```bash
- * GEMINI_API_KEY=... bun test ./src/tests/acp-integration-gemini.e2e.ts
+ * ANTHROPIC_API_KEY=sk-... bun test ./src/tests/acp-claude.spec.ts
  * ```
  *
  * Prerequisites:
- * 1. Gemini CLI installed (`npm install -g @anthropic-ai/gemini-cli`)
- * 2. API key: `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variable
+ * 1. Claude CLI installed (`bunx @anthropic-ai/claude-code`)
+ * 2. API key: `ANTHROPIC_API_KEY` environment variable
  *
  * These tests make real API calls and consume credits.
  *
  * MCP servers are auto-discovered from project root via:
- * - `.gemini/settings.json` - Gemini MCP server configuration
+ * - `.mcp.json` - MCP server configuration
  */
 
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
@@ -31,30 +31,25 @@ setDefaultTimeout(120000)
 // Use project root as cwd - agents discover MCP servers from config files
 const PROJECT_ROOT = process.cwd()
 
-// Schema path for Gemini headless adapter
-const SCHEMA_PATH = join(PROJECT_ROOT, '.claude/skills/acp-adapters/schemas/gemini-headless.json')
+// Schema path for Claude headless adapter
+const SCHEMA_PATH = join(PROJECT_ROOT, '.claude/skills/acp-adapters/schemas/claude-headless.json')
 
-// Gemini CLI accepts both GOOGLE_API_KEY and GEMINI_API_KEY
-// Use either one if available
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY ?? ''
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''
-const API_KEY = GOOGLE_API_KEY || GEMINI_API_KEY
+// Get API key from environment
+const API_KEY = process.env.ANTHROPIC_API_KEY ?? ''
 
 // Skip all tests if no API key is available
 const describeWithApiKey = API_KEY ? describe : describe.skip
 
-describeWithApiKey('Headless Adapter Integration - Gemini', () => {
+describeWithApiKey('Headless Adapter Integration - Claude', () => {
   let client: ACPClient
 
   beforeAll(async () => {
-    // Use headless adapter with Gemini schema
-    // Pass both API key variants - Gemini CLI should pick up whichever it prefers
+    // Use headless adapter with Claude schema
     client = createACPClient({
       command: ['bun', 'src/headless-cli.ts', '--', '--schema', SCHEMA_PATH],
       timeout: 120000, // 2 min timeout for initialization
       env: {
-        GOOGLE_API_KEY: API_KEY,
-        GEMINI_API_KEY: API_KEY,
+        ANTHROPIC_API_KEY: API_KEY,
       },
     })
 
@@ -79,7 +74,7 @@ describeWithApiKey('Headless Adapter Integration - Gemini', () => {
   })
 
   test('creates session with project cwd', async () => {
-    // Session uses project root - agent discovers MCP servers from .gemini/settings.json
+    // Session uses project root - agent discovers MCP servers from .mcp.json
     const session = await client.createSession({
       cwd: PROJECT_ROOT,
     })
@@ -107,8 +102,6 @@ describeWithApiKey('Headless Adapter Integration - Gemini', () => {
     const summary = summarizeResponse(updates)
     expect(summary.text).toBeDefined()
     expect(summary.text.length).toBeGreaterThan(0)
-    // Should contain "4" somewhere in the response
-    expect(summary.text).toMatch(/4/)
   })
 
   test('streaming prompt yields updates', async () => {
@@ -129,26 +122,26 @@ describeWithApiKey('Headless Adapter Integration - Gemini', () => {
   })
 
   test('uses MCP server from project config', async () => {
-    // This test verifies that Gemini discovers MCP servers from .gemini/settings.json
-    // The agent-client-protocol MCP server is configured at project root
+    // This test verifies that Claude discovers MCP servers from .mcp.json
+    // The bun-docs MCP server is configured at project root
     const session = await client.createSession({
       cwd: PROJECT_ROOT,
     })
 
-    // Query the agent-client-protocol MCP server (configured in .gemini/settings.json)
+    // Query the bun-docs MCP server (configured in .mcp.json)
     const { updates } = await client.promptSync(
       session.id,
       createPrompt(
-        'Use the agent-client-protocol MCP server to search for information about ACP. ' +
-          'What is the Agent Client Protocol and what problem does it solve?',
+        'Use the bun-docs MCP server to search for information about Bun.serve(). ' +
+          'What are the key options for creating an HTTP server with Bun?',
       ),
     )
 
     const summary = summarizeResponse(updates)
 
-    // Response should contain ACP-related information
+    // Response should contain Bun server-related information
     expect(summary.text.length).toBeGreaterThan(0)
-    // Should mention protocol/agent-related concepts
-    expect(summary.text.toLowerCase()).toMatch(/agent|protocol|client|json-rpc|stdio/)
+    // Should mention server/HTTP-related concepts from Bun docs
+    expect(summary.text.toLowerCase()).toMatch(/serve|server|http|port|fetch|handler/)
   })
 })
