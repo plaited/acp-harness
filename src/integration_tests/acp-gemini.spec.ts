@@ -51,7 +51,7 @@ describeWithApiKey('Headless Adapter Integration - Gemini', () => {
       command: ['bun', 'src/headless-cli.ts', '--', '--schema', SCHEMA_PATH],
       timeout: 120000, // 2 min timeout for initialization
       env: {
-        GEMINI_API_KEY
+        GEMINI_API_KEY,
       },
     })
 
