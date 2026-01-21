@@ -349,16 +349,21 @@ const collectOutput = async (
 
           // Parse as update first (so updates are emitted even for result lines)
           const update = parser.parseLine(line)
-          if (update) {
-            updates.push(update)
-            onUpdate?.(update)
+          if (update !== null) {
+            // Handle both single updates and arrays of updates (from wildcard matches)
+            const updatesToProcess = Array.isArray(update) ? update : [update]
 
-            // Extract CLI session ID if available
-            if (!cliSessionId && update.raw && typeof update.raw === 'object') {
-              const raw = update.raw as Record<string, unknown>
-              if (typeof raw.session_id === 'string') {
-                cliSessionId = raw.session_id
-                session.cliSessionId = cliSessionId
+            for (const singleUpdate of updatesToProcess) {
+              updates.push(singleUpdate)
+              onUpdate?.(singleUpdate)
+
+              // Extract CLI session ID if available
+              if (!cliSessionId && singleUpdate.raw && typeof singleUpdate.raw === 'object') {
+                const raw = singleUpdate.raw as Record<string, unknown>
+                if (typeof raw.session_id === 'string') {
+                  cliSessionId = raw.session_id
+                  session.cliSessionId = cliSessionId
+                }
               }
             }
           }

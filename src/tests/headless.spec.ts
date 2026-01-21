@@ -287,17 +287,21 @@ describe('createOutputParser', () => {
       const line = JSON.stringify({ type: 'assistant', message: { text: 'Hello' } })
       const result = parser.parseLine(line)
       expect(result).not.toBeNull()
-      expect(result?.type).toBe('message')
-      expect(result?.content).toBe('Hello')
+      // Handle both single result and array of results
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.type).toBe('message')
+      expect(singleResult?.content).toBe('Hello')
     })
 
     test('maps tool_use type to tool_call', () => {
       const line = JSON.stringify({ type: 'tool_use', name: 'Read' })
       const result = parser.parseLine(line)
       expect(result).not.toBeNull()
-      expect(result?.type).toBe('tool_call')
-      expect(result?.title).toBe('Read')
-      expect(result?.status).toBe('pending')
+      // Handle both single result and array of results
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.type).toBe('tool_call')
+      expect(singleResult?.title).toBe('Read')
+      expect(singleResult?.status).toBe('pending')
     })
 
     test('returns null for unmapped event types', () => {
@@ -320,7 +324,152 @@ describe('createOutputParser', () => {
       const event = { type: 'assistant', message: { text: 'Hi' } }
       const line = JSON.stringify(event)
       const result = parser.parseLine(line)
-      expect(result?.raw).toEqual(event)
+      // Handle both single result and array of results
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.raw).toEqual(event)
+    })
+  })
+
+  describe('parseLine with array wildcards', () => {
+    const wildcardConfig = parseHeadlessConfig({
+      version: 1,
+      name: 'wildcard-test',
+      command: ['test'],
+      sessionMode: 'stream',
+      prompt: { flag: '-p' },
+      output: { flag: '--output', value: 'json' },
+      outputEvents: [
+        {
+          match: { path: '$.message.content[*].type', value: 'tool_use' },
+          emitAs: 'tool_call',
+          extract: { title: '$.name', status: "'pending'" },
+        },
+        {
+          match: { path: '$.items[*]', value: '*' },
+          emitAs: 'message',
+          extract: { content: '$.text' },
+        },
+      ],
+      result: {
+        matchPath: '$.type',
+        matchValue: 'result',
+        contentPath: '$.output',
+      },
+    })
+    const wildcardParser = createOutputParser(wildcardConfig)
+
+    test('returns array of updates for matching array items', () => {
+      const line = JSON.stringify({
+        message: {
+          content: [
+            { type: 'tool_use', name: 'Read', input: {} },
+            { type: 'text', value: 'Hello' },
+            { type: 'tool_use', name: 'Write', input: {} },
+          ],
+        },
+      })
+      const result = wildcardParser.parseLine(line)
+      expect(Array.isArray(result)).toBe(true)
+      if (Array.isArray(result)) {
+        expect(result).toHaveLength(2)
+        expect(result[0]!.type).toBe('tool_call')
+        expect(result[0]!.title).toBe('Read')
+        expect(result[0]!.status).toBe('pending')
+        expect(result[1]!.type).toBe('tool_call')
+        expect(result[1]!.title).toBe('Write')
+        expect(result[1]!.status).toBe('pending')
+      }
+    })
+
+    test('handles empty array gracefully', () => {
+      const line = JSON.stringify({
+        message: { content: [] },
+      })
+      const result = wildcardParser.parseLine(line)
+      expect(result).toBeNull()
+    })
+
+    test('handles non-matching array items', () => {
+      const line = JSON.stringify({
+        message: {
+          content: [
+            { type: 'text', value: 'No tool use here' },
+            { type: 'image', data: 'base64...' },
+          ],
+        },
+      })
+      const result = wildcardParser.parseLine(line)
+      expect(result).toBeNull()
+    })
+
+    test('matches wildcard value for all non-null items', () => {
+      const line = JSON.stringify({
+        items: [{ text: 'Item 1' }, { text: 'Item 2' }, { text: 'Item 3' }],
+      })
+      const result = wildcardParser.parseLine(line)
+      expect(Array.isArray(result)).toBe(true)
+      if (Array.isArray(result)) {
+        expect(result).toHaveLength(3)
+        expect(result[0]!.content).toBe('Item 1')
+        expect(result[1]!.content).toBe('Item 2')
+        expect(result[2]!.content).toBe('Item 3')
+      }
+    })
+
+    test('handles mixed array content with type guards', () => {
+      const line = JSON.stringify({
+        message: {
+          content: [
+            { type: 'tool_use', name: 'Valid' },
+            'string-item',
+            { no_type_property: true },
+            null,
+            { type: 'tool_use', name: 'AlsoValid' },
+          ],
+        },
+      })
+      const result = wildcardParser.parseLine(line)
+      expect(Array.isArray(result)).toBe(true)
+      if (Array.isArray(result)) {
+        expect(result).toHaveLength(2)
+        expect(result[0]!.title).toBe('Valid')
+        expect(result[1]!.title).toBe('AlsoValid')
+      }
+    })
+  })
+
+  describe('jsonPath with array wildcard', () => {
+    test('extracts array with [*] wildcard', () => {
+      const obj = { items: [{ id: 1 }, { id: 2 }] }
+      const result = jsonPath(obj, '$.items[*]')
+      expect(Array.isArray(result)).toBe(true)
+      if (Array.isArray(result)) {
+        expect(result).toHaveLength(2)
+      }
+    })
+
+    test('returns undefined for non-array at wildcard position', () => {
+      const obj = { items: 'not-an-array' }
+      const result = jsonPath(obj, '$.items[*]')
+      expect(result).toBeUndefined()
+    })
+
+    test('handles empty array', () => {
+      const obj = { items: [] }
+      const result = jsonPath(obj, '$.items[*]')
+      expect(result).toEqual([])
+    })
+
+    test('handles nested path to array', () => {
+      const obj = { message: { content: [1, 2, 3] } }
+      const result = jsonPath(obj, '$.message.content[*]')
+      expect(result).toEqual([1, 2, 3])
+    })
+
+    test('returns undefined when path before wildcard is invalid', () => {
+      const obj = { items: [1, 2, 3] }
+      const result = jsonPath(obj, '$.missing[*]')
+      expect(result).toBeUndefined()
     })
   })
 
