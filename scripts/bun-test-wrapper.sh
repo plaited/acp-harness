@@ -11,7 +11,7 @@ tmpfile=$(mktemp)
 trap "rm -f $tmpfile" EXIT
 
 # Run integration tests with output to both terminal and file
-bun run test:integration 2>&1 | tee "$tmpfile"
+bun test ./**/integration_tests/*.spec.ts 2>&1 | tee "$tmpfile"
 exit_code=${PIPESTATUS[0]}
 
 # Check if tests passed (look for "X pass" and "0 fail" in output)

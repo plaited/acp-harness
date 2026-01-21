@@ -435,10 +435,22 @@ bunx @plaited/acp-harness schemas CaptureResult --json
 **Recommendation:** Run the harness in Docker containers for consistent, isolated execution.
 
 ```bash
-docker compose -f docker-compose.acp.yml run --rm acp-harness
+# Run integration tests via Docker
+docker compose -f docker-compose.test.yml run --rm acp-test
+
+# Or with explicit API keys
+ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.test.yml run --rm acp-test
 ```
 
-See [assets/](assets/) for example container configurations.
+### Docker Requirements
+
+| Requirement | Reason |
+|-------------|--------|
+| **Node.js 24+** | Gemini CLI uses modern JS features (optional chaining) |
+| **Non-root user** | Claude CLI blocks `--dangerously-skip-permissions` as root |
+| **Both API key vars** | Pass `GEMINI_API_KEY` AND `GOOGLE_API_KEY` (Gemini prefers the latter) |
+
+See [docker-evals.md](references/docker-evals.md) for complete Docker setup guide, debugging tips, and CI integration patterns.
 
 ## Downstream Integration
 
@@ -466,6 +478,7 @@ See [downstream.md](references/downstream.md) for integration patterns with Brai
 | [downstream.md](references/downstream.md) | Integration patterns (Braintrust, jq, custom scorers) |
 | [graders.md](references/graders.md) | Polyglot grader documentation (TypeScript, Python, shell) |
 | [eval-concepts.md](references/eval-concepts.md) | Evaluation concepts (pass@k, pass^k, calibration) |
+| [docker-evals.md](references/docker-evals.md) | Docker setup, debugging, CI integration |
 
 ## Related
 
