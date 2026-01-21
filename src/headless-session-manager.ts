@@ -166,9 +166,10 @@ export const createSessionManager = (config: SessionManagerConfig) => {
         stderr: 'inherit',
       })
 
-      // If using stdin, write the prompt
+      // If using stdin, write the prompt and close stdin
+      // (stream mode spawns new process per turn, so stdin should close after writing)
       if (schema.prompt.stdin && session.process) {
-        writePromptToStdin(session.process, promptText)
+        writePromptToStdin(session.process, promptText, true)
       }
     } else {
       // Subsequent turns: spawn new process with resume flag
@@ -182,9 +183,10 @@ export const createSessionManager = (config: SessionManagerConfig) => {
         stderr: 'inherit',
       })
 
-      // If using stdin, write the prompt
+      // If using stdin, write the prompt and close stdin
+      // (stream mode spawns new process per turn, so stdin should close after writing)
       if (schema.prompt.stdin && session.process) {
-        writePromptToStdin(session.process, promptText)
+        writePromptToStdin(session.process, promptText, true)
       }
     }
 
