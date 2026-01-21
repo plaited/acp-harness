@@ -9,7 +9,7 @@
 #   CI:     Uses secrets from GitHub Actions
 
 services:
-  acp-test:
+  test:
     build:
       context: .
       dockerfile: Dockerfile.test

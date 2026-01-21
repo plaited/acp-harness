@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * ACP Harness CLI - Agent evaluation toolkit.
+ * Agent Eval Harness CLI - Agent evaluation toolkit.
  *
  * @remarks
  * Router for harness commands. Thin wrapper that delegates to command modules.
@@ -15,30 +15,27 @@
  * - balance: Analyze test set coverage
  * - schemas: Export JSON schemas for non-TS users
  * - headless: Schema-driven adapter for any headless CLI agent
- * - adapter:scaffold: Scaffold new ACP adapter project
- * - adapter:check: Validate adapter ACP compliance
  */
 
-import { adapterCheck } from '../src/adapter-check.ts'
-import { adapterScaffold } from '../src/adapter-scaffold.ts'
-import { balance } from '../src/balance.ts'
-import { calibrate } from '../src/calibrate.ts'
-import { capture } from '../src/capture.ts'
+import { balance } from '../src/commands/balance.ts'
+import { calibrate } from '../src/commands/calibrate.ts'
+import { capture } from '../src/commands/capture.ts'
+import { summarize } from '../src/commands/summarize.ts'
+import { trials } from '../src/commands/trials.ts'
+import { validateRefs } from '../src/commands/validate-refs.ts'
 import { headless } from '../src/headless.ts'
-import { schemasCli } from '../src/schemas-cli.ts'
-import { summarize } from '../src/summarize.ts'
-import { trials } from '../src/trials.ts'
-import { validateRefs } from '../src/validate-refs.ts'
+import { compare, extract, format, grade, run } from '../src/pipeline.ts'
+import { schemasCli } from '../src/schemas/schemas-cli.ts'
 
 const [command, ...args] = Bun.argv.slice(2)
 
 const printHelp = () => {
   // biome-ignore lint/suspicious/noConsole: CLI help output
   console.log(`
-acp-harness - CLI tool for agent evaluation
+agent-eval-harness - CLI tool for agent evaluation
 
 Commands:
-  capture          Capture trajectories from ACP agent
+  capture          Capture trajectories from CLI agents
   trials           Run prompts multiple times for pass@k/pass^k metrics
   summarize        Derive compact views from results
   calibrate        Sample failures for grader review
@@ -46,42 +43,40 @@ Commands:
   balance          Analyze test set coverage
   schemas          Export JSON schemas for non-TypeScript users
   headless         Schema-driven adapter for any headless CLI agent
-  adapter:scaffold Scaffold a new ACP adapter project
-  adapter:check    Validate adapter ACP compliance
 
-Run 'acp-harness <command> --help' for command-specific help.
+Pipeline Commands (Unix-style composable):
+  run              Execute prompts and output raw results
+  extract          Parse raw output into trajectories
+  grade            Apply grader to extracted results
+  format           Convert results to different output formats
+  compare          Compare multiple runs of the same prompts
+
+Run 'agent-eval-harness <command> --help' for command-specific help.
 
 Examples:
-  # Basic capture
-  acp-harness capture prompts.jsonl bunx claude-code-acp -o results.jsonl
+  # Basic capture with schema
+  agent-eval-harness capture prompts.jsonl --schema claude.json -o results.jsonl
 
   # With grader
-  acp-harness capture prompts.jsonl bunx claude-code-acp --grader ./grader.ts -o results.jsonl
+  agent-eval-harness capture prompts.jsonl -s claude.json --grader ./grader.ts -o results.jsonl
 
   # Multi-run trials
-  acp-harness trials prompts.jsonl bunx claude-code-acp -k 5 --grader ./grader.ts -o trials.jsonl
+  agent-eval-harness trials prompts.jsonl -s claude.json -k 5 --grader ./grader.ts -o trials.jsonl
 
   # Derive summary view
-  acp-harness summarize results.jsonl -o summary.jsonl
+  agent-eval-harness summarize results.jsonl -o summary.jsonl
 
-  # Export schemas
-  acp-harness schemas --json -o schemas.json
+  # Pipeline workflow
+  cat prompts.jsonl | \\
+    agent-eval-harness run -s claude.json | \\
+    agent-eval-harness extract -s claude.json | \\
+    agent-eval-harness grade -g ./grader.ts | \\
+    agent-eval-harness format -f markdown > report.md
 
-  # Scaffold new adapter
-  acp-harness adapter:scaffold my-agent -o ./adapters/my-agent
+  # Compare multiple runs
+  agent-eval-harness compare run1.jsonl run2.jsonl -g ./compare-grader.ts
 
-  # Validate adapter compliance
-  acp-harness adapter:check bun ./my-adapter/src/main.ts
-
-  # Run headless adapter with schema
-  acp-harness headless --schema ./claude-headless.json
-
-  # Capture with headless adapter
-  acp-harness capture prompts.jsonl \\
-    acp-harness headless --schema ./claude-headless.json \\
-    -o results.jsonl
-
-Documentation: https://github.com/plaited/acp-harness
+Documentation: https://github.com/plaited/agent-eval-harness
 `)
 }
 
@@ -119,12 +114,25 @@ const main = async () => {
       await headless(args)
       break
 
-    case 'adapter:scaffold':
-      await adapterScaffold(args)
+    // Pipeline commands
+    case 'run':
+      await run(args)
       break
 
-    case 'adapter:check':
-      await adapterCheck(args)
+    case 'extract':
+      await extract(args)
+      break
+
+    case 'grade':
+      await grade(args)
+      break
+
+    case 'format':
+      await format(args)
+      break
+
+    case 'compare':
+      await compare(args)
       break
 
     case '-h':
@@ -143,7 +151,7 @@ const main = async () => {
 
     default:
       console.error(`Unknown command: ${command}`)
-      console.error("Run 'acp-harness --help' for usage")
+      console.error("Run 'agent-eval-harness --help' for usage")
       process.exit(1)
   }
 }

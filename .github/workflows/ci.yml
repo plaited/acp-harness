@@ -16,14 +16,14 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      acp: ${{ steps.filter.outputs.acp }}
+      src: ${{ steps.filter.outputs.src }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
-            acp:
+            src:
               - 'src/**'
 
   test-pr:
@@ -46,14 +46,14 @@ jobs:
   #   - GEMINI_API_KEY: API key for Gemini CLI integration tests
   test-integration:
     needs: changes
-    if: ${{ needs.changes.outputs.acp == 'true' }}
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run ACP integration tests
+      - name: Run integration tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: docker compose -f docker-compose.test.yml run --rm acp-test
+        run: docker compose -f docker-compose.test.yml run --rm test

@@ -92,7 +92,7 @@ For functions with more than two parameters, use a single object parameter:
 
 ```typescript
 // ✅ Good: Object parameter pattern
-const createClient = ({
+const createSessionManager = ({
   command,
   timeout,
   cwd,
@@ -100,14 +100,14 @@ const createClient = ({
   command: string[]
   timeout: number
   cwd?: string
-}): ACPClient => { /* ... */ }
+}): SessionManager => { /* ... */ }
 
 // ❌ Avoid: Multiple positional parameters
-const createClient = (
+const createSessionManager = (
   command: string[],
   timeout: number,
   cwd?: string
-): ACPClient => { /* ... */ }
+): SessionManager => { /* ... */ }
 ```
 
 **Exception - CLI Entry Points:** CLI functions take `args: string[]` because that's what the shell provides—parsing happens inside the function. This rule applies to internal APIs where callers pass typed values directly.
