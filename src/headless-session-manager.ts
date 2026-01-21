@@ -153,24 +153,37 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     // Build command for first turn or if no process exists
     if (!session.process || session.process.killed) {
       const args = buildCommand(session, promptText)
-      // First turn: prompt is in command line, use 'ignore' for stdin
-      // Some CLIs (like Claude) hang when stdin is piped but not written to
+
+      // Choose stdin mode based on schema configuration
+      const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
       session.process = Bun.spawn(args, {
         cwd: session.cwd,
-        stdin: 'ignore',
+        stdin: stdinMode,
         stdout: 'pipe',
         stderr: 'inherit',
       })
+
+      // If using stdin, write the prompt
+      if (schema.prompt.stdin && session.process) {
+        writePromptToStdin(session.process, promptText)
+      }
     } else {
       // Subsequent turns: spawn new process with resume flag
-      // (stdin-based multi-turn not currently supported)
       const args = buildCommand(session, promptText)
+      const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
       session.process = Bun.spawn(args, {
         cwd: session.cwd,
-        stdin: 'ignore',
+        stdin: stdinMode,
         stdout: 'pipe',
         stderr: 'inherit',
       })
+
+      // If using stdin, write the prompt
+      if (schema.prompt.stdin && session.process) {
+        writePromptToStdin(session.process, promptText)
+      }
     }
 
     return collectOutput(session, outputParser, onUpdate, timeout)
@@ -188,14 +201,20 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     const fullPrompt = session.history?.buildPrompt(promptText) ?? promptText
 
     // Build and spawn command
-    // Use 'ignore' for stdin - prompt is passed via command line flag
     const args = buildCommand(session, fullPrompt)
+    const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
     session.process = Bun.spawn(args, {
       cwd: session.cwd,
-      stdin: 'ignore',
+      stdin: stdinMode,
       stdout: 'pipe',
       stderr: 'inherit',
     })
+
+    // If using stdin, write the prompt
+    if (schema.prompt.stdin && session.process) {
+      writePromptToStdin(session.process, fullPrompt)
+    }
 
     const result = await collectOutput(session, outputParser, onUpdate, timeout)
 
@@ -232,12 +251,14 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       args.push(schema.resume.flag, session.cliSessionId)
     }
 
-    // Add prompt flag and text
-    if (schema.prompt.flag) {
-      args.push(schema.prompt.flag, promptText)
-    } else {
-      // Positional argument (no flag)
-      args.push(promptText)
+    // Add prompt flag and text (skip if using stdin)
+    if (!schema.prompt.stdin) {
+      if (schema.prompt.flag) {
+        args.push(schema.prompt.flag, promptText)
+      } else {
+        // Positional argument (no flag)
+        args.push(promptText)
+      }
     }
 
     return args
@@ -297,6 +318,32 @@ export const createSessionManager = (config: SessionManagerConfig) => {
  */
 const generateSessionId = (): string => {
   return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+/**
+ * Writes a prompt to a process stdin stream.
+ *
+ * @remarks
+ * Uses Bun's FileSink API to write text to the process stdin.
+ * The FileSink type provides `write()` and `flush()` methods for
+ * efficient stream writing without async overhead.
+ *
+ * Type guard ensures stdin is a FileSink (not a file descriptor number)
+ * before attempting to write. This handles Bun's subprocess stdin types:
+ * - `'pipe'` → FileSink with write/flush methods
+ * - `'ignore'` → null (not writable)
+ * - number → file descriptor (not a FileSink)
+ *
+ * @param process - Subprocess with stdin stream
+ * @param prompt - Prompt text to write
+ *
+ * @internal
+ */
+const writePromptToStdin = (process: Subprocess, prompt: string): void => {
+  if (process.stdin && typeof process.stdin !== 'number') {
+    process.stdin.write(`${prompt}\n`)
+    process.stdin.flush()
+  }
 }
 
 /**

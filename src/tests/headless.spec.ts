@@ -118,6 +118,59 @@ describe('HeadlessAdapterSchema', () => {
     })
   })
 
+  describe('stdin mode configuration', () => {
+    test('validates schema with stdin: true', () => {
+      const stdinSchema = {
+        version: 1,
+        name: 'stdin-agent',
+        command: ['agent', 'exec', '-'],
+        sessionMode: 'stream',
+        prompt: { stdin: true },
+        output: { flag: '--format', value: 'json' },
+        outputEvents: [],
+        result: { matchPath: '$.type', matchValue: 'done', contentPath: '$.text' },
+      }
+      const result = HeadlessAdapterSchema.safeParse(stdinSchema)
+      expect(result.success).toBe(true)
+    })
+
+    test('validates schema with stdin: false', () => {
+      const stdinSchema = {
+        version: 1,
+        name: 'stdin-agent',
+        command: ['agent'],
+        sessionMode: 'stream',
+        prompt: { stdin: false, flag: '-p' },
+        output: { flag: '--format', value: 'json' },
+        outputEvents: [],
+        result: { matchPath: '$.type', matchValue: 'done', contentPath: '$.text' },
+      }
+      const result = HeadlessAdapterSchema.safeParse(stdinSchema)
+      expect(result.success).toBe(true)
+    })
+
+    test('validates schema with positional prompt and - in command', () => {
+      const stdinSchema = {
+        version: 1,
+        name: 'codex-like',
+        command: ['codex', 'exec', '--json', '-'],
+        sessionMode: 'iterative',
+        prompt: { stdin: true },
+        output: { flag: '', value: '' },
+        outputEvents: [
+          {
+            match: { path: '$.item.type', value: 'agent_message' },
+            emitAs: 'message',
+            extract: { content: '$.item.text' },
+          },
+        ],
+        result: { matchPath: '$.type', matchValue: 'turn.completed', contentPath: '$.usage.output_tokens' },
+      }
+      const result = HeadlessAdapterSchema.safeParse(stdinSchema)
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('invalid schemas', () => {
     test('rejects missing version', () => {
       const invalid = { ...validClaudeSchema, version: undefined }
@@ -141,6 +194,22 @@ describe('HeadlessAdapterSchema', () => {
       const invalid = { ...validClaudeSchema, command: undefined }
       const result = HeadlessAdapterSchema.safeParse(invalid)
       expect(result.success).toBe(false)
+    })
+
+    test('rejects both flag and stdin specified', () => {
+      const invalid = {
+        ...validClaudeSchema,
+        prompt: {
+          flag: '-p',
+          stdin: true,
+        },
+      }
+      const result = HeadlessAdapterSchema.safeParse(invalid)
+      expect(result.success).toBe(false)
+      // Type assertion after checking success is false
+      const error = (result as { success: false; error: { issues: Array<{ message: string }> } }).error
+      expect(error.issues.length).toBeGreaterThan(0)
+      expect(error.issues[0]!.message).toContain("Cannot specify both 'flag' and 'stdin' modes")
     })
 
     test('rejects invalid emitAs type', () => {
