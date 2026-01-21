@@ -211,17 +211,17 @@ All 6 checks should pass:
 | Agent | JSON Output Flag | Prompt Flag | CLI Documentation |
 |-------|------------------|-------------|-------------------|
 | Amp | `--stream-json` | `-x` | [ampcode.com/manual#cli](https://ampcode.com/manual#cli) |
-| Droid | `-o stream-json` | positional | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
-| Letta | `--output-format stream-json` | `-p` | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
-| Goose | `--output-format stream-json` | `-t` | [block.github.io/goose/.../goose-cli-commands](https://block.github.io/goose/docs/guides/goose-cli-commands/) |
-| OpenCode | `--format json` | positional | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 | Codex | `--json` | positional | [developers.openai.com/codex/cli](https://developers.openai.com/codex/cli/) |
+| Cursor | `--output-format stream-json --print` | `-p` | [cursor.com/docs/cli/reference/output-format](https://cursor.com/docs/cli/reference/output-format) |
+| Droid | `-o stream-json` | positional | [docs.factory.ai/cli/droid-exec/overview](https://docs.factory.ai/cli/droid-exec/overview) |
+| Goose | `--output-format stream-json` | `-t` | [block.github.io/goose/.../goose-cli-commands](https://block.github.io/goose/docs/guides/goose-cli-commands/) |
+| Letta | `--output-format stream-json` | `-p` | [docs.letta.com/letta-code/cli-reference](https://docs.letta.com/letta-code/cli-reference/) |
+| OpenCode | `--format json` | positional | [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 
 ### Incompatible (No JSON Output)
 
 | Agent | CLI Documentation | Issue |
 |-------|-------------------|-------|
-| Cursor | [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/overview) | Only `--output-format text` |
 | Copilot | [docs.github.com/.../about-copilot-cli](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli) | No structured output |
 
 > **Note:** For detailed ACP protocol questions during schema creation, use the `agent-client-protocol-docs` MCP server. See SKILL.md for configuration.
