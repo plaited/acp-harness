@@ -173,12 +173,20 @@ See [Schema Creation Guide](references/schema-creation-guide.md) for the complet
 
 | Issue | Likely Cause | Solution |
 |-------|--------------|----------|
-| Timeout on prompt | JSONPath not matching | Capture raw CLI output, verify paths |
-| "Request timed out" | Result event not detected | Check `result.matchPath/matchValue` |
-| Empty responses | Content extraction failing | Verify array indexing (`[0]`) in paths |
-| CLI hangs silently | `stdin: 'pipe'` without writing | Use `stdin: 'ignore'` when prompt is in args |
+| Tool calls not captured | JSONPath not iterating arrays | Use `[*]` wildcard syntax - [see guide](references/troubleshooting-guide.md#tool-calls-not-appearing) |
+| "unexpected argument" error | Stdin mode misconfigured | Use `stdin: true` - [see guide](references/troubleshooting-guide.md#stdin-mode-issues) |
+| 401 Authentication errors | API key not properly configured | Check auth flow - [see guide](references/troubleshooting-guide.md#authentication-and-api-keys) |
+| Timeout on prompt | JSONPath not matching | Capture raw CLI output, verify paths - [see guide](references/troubleshooting-guide.md#jsonpath-debugging) |
+| Empty responses | Content extraction failing | Check extract paths - [see guide](references/troubleshooting-guide.md#output-event-matching) |
 
-> **Important:** Some CLIs (notably Claude Code) hang when spawned with `stdin: 'pipe'` but nothing is written. If the prompt is passed via command-line flag (e.g., `-p "text"`), use `stdin: 'ignore'` instead.
+**📖 Complete troubleshooting documentation:** [Troubleshooting Guide](references/troubleshooting-guide.md)
+
+This guide includes:
+- Detailed debugging steps for each issue
+- Real examples from production debugging sessions
+- JSONPath testing techniques
+- Authentication patterns for different CLIs
+- Common schema patterns and anti-patterns
 
 ### Quick Debug Steps
 

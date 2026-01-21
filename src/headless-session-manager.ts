@@ -153,24 +153,41 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     // Build command for first turn or if no process exists
     if (!session.process || session.process.killed) {
       const args = buildCommand(session, promptText)
-      // First turn: prompt is in command line, use 'ignore' for stdin
-      // Some CLIs (like Claude) hang when stdin is piped but not written to
+
+      // Choose stdin mode based on schema configuration
+      const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
       session.process = Bun.spawn(args, {
         cwd: session.cwd,
-        stdin: 'ignore',
+        stdin: stdinMode,
         stdout: 'pipe',
         stderr: 'inherit',
       })
+
+      // If using stdin, write the prompt and close stdin
+      if (schema.prompt.stdin && session.process.stdin) {
+        const writer = session.process.stdin.getWriter()
+        await writer.write(new TextEncoder().encode(promptText + '\n'))
+        await writer.close()
+      }
     } else {
       // Subsequent turns: spawn new process with resume flag
-      // (stdin-based multi-turn not currently supported)
       const args = buildCommand(session, promptText)
+      const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
       session.process = Bun.spawn(args, {
         cwd: session.cwd,
-        stdin: 'ignore',
+        stdin: stdinMode,
         stdout: 'pipe',
         stderr: 'inherit',
       })
+
+      // If using stdin, write the prompt and close stdin
+      if (schema.prompt.stdin && session.process.stdin) {
+        const writer = session.process.stdin.getWriter()
+        await writer.write(new TextEncoder().encode(promptText + '\n'))
+        await writer.close()
+      }
     }
 
     return collectOutput(session, outputParser, onUpdate, timeout)
@@ -188,14 +205,22 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     const fullPrompt = session.history?.buildPrompt(promptText) ?? promptText
 
     // Build and spawn command
-    // Use 'ignore' for stdin - prompt is passed via command line flag
     const args = buildCommand(session, fullPrompt)
+    const stdinMode = schema.prompt.stdin ? 'pipe' : 'ignore'
+
     session.process = Bun.spawn(args, {
       cwd: session.cwd,
-      stdin: 'ignore',
+      stdin: stdinMode,
       stdout: 'pipe',
       stderr: 'inherit',
     })
+
+    // If using stdin, write the prompt and close stdin
+    if (schema.prompt.stdin && session.process.stdin) {
+      const writer = session.process.stdin.getWriter()
+      await writer.write(new TextEncoder().encode(fullPrompt + '\n'))
+      await writer.close()
+    }
 
     const result = await collectOutput(session, outputParser, onUpdate, timeout)
 
@@ -232,12 +257,14 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       args.push(schema.resume.flag, session.cliSessionId)
     }
 
-    // Add prompt flag and text
-    if (schema.prompt.flag) {
-      args.push(schema.prompt.flag, promptText)
-    } else {
-      // Positional argument (no flag)
-      args.push(promptText)
+    // Add prompt flag and text (skip if using stdin)
+    if (!schema.prompt.stdin) {
+      if (schema.prompt.flag) {
+        args.push(schema.prompt.flag, promptText)
+      } else {
+        // Positional argument (no flag)
+        args.push(promptText)
+      }
     }
 
     return args
