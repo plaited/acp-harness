@@ -26,9 +26,9 @@ When a package has one primary feature, expose that re-export file directly as m
 
 ```json
 {
-  "main": "src/capture.ts",
+  "main": "src/harness.ts",
   "exports": {
-    ".": "./src/capture.ts",
+    ".": "./src/harness.ts",
     "./utils": "./src/utils.ts"
   }
 }

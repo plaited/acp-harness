@@ -92,7 +92,7 @@ For functions with more than two parameters, use a single object parameter:
 
 ```typescript
 // ✅ Good: Object parameter pattern
-const createClient = ({
+const createSessionManager = ({
   command,
   timeout,
   cwd,
@@ -103,7 +103,7 @@ const createClient = ({
 }): SessionManager => { /* ... */ }
 
 // ❌ Avoid: Multiple positional parameters
-const createClient = (
+const createSessionManager = (
   command: string[],
   timeout: number,
   cwd?: string
