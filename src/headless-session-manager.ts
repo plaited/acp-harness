@@ -167,7 +167,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       // If using stdin, write the prompt and close stdin
       if (schema.prompt.stdin && session.process.stdin) {
         const writer = session.process.stdin.getWriter()
-        await writer.write(new TextEncoder().encode(promptText + '\n'))
+        await writer.write(new TextEncoder().encode(`${promptText}\n`))
         await writer.close()
       }
     } else {
@@ -185,7 +185,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
       // If using stdin, write the prompt and close stdin
       if (schema.prompt.stdin && session.process.stdin) {
         const writer = session.process.stdin.getWriter()
-        await writer.write(new TextEncoder().encode(promptText + '\n'))
+        await writer.write(new TextEncoder().encode(`${promptText}\n`))
         await writer.close()
       }
     }
@@ -218,7 +218,7 @@ export const createSessionManager = (config: SessionManagerConfig) => {
     // If using stdin, write the prompt and close stdin
     if (schema.prompt.stdin && session.process.stdin) {
       const writer = session.process.stdin.getWriter()
-      await writer.write(new TextEncoder().encode(fullPrompt + '\n'))
+      await writer.write(new TextEncoder().encode(`${fullPrompt}\n`))
       await writer.close()
     }
 
