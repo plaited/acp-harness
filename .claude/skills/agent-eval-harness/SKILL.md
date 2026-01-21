@@ -278,6 +278,8 @@ bunx @plaited/agent-eval-harness run prompts.jsonl --simple "claude -p {} --outp
 bunx @plaited/agent-eval-harness run prompts.jsonl --shell 'claude -p "$PROMPT" --output-format stream-json'
 ```
 
+> **⚠️ Security Warning:** The `--simple` and `--shell` modes execute prompts via shell commands. Prompts are escaped but **do not use untrusted prompt content** with these modes. Malicious prompt text could potentially escape the quoting and execute arbitrary commands. Use `--schema` mode (headless adapter) for untrusted inputs.
+
 ### Extract Command
 
 Parse raw output into structured trajectories:
