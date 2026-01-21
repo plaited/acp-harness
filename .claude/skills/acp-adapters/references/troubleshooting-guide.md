@@ -171,6 +171,59 @@ Use `stdin: true` when:
 
 ---
 
+## Empty Output Flags {#empty-output-flags}
+
+### Symptom
+
+- CLI returns error: `error: unexpected argument '' found`
+- Error occurs even with correct stdin configuration
+- CLI already has output format in command (e.g., `--json`)
+
+### Root Cause
+
+Some CLIs have the output format embedded in the base command (e.g., `codex exec --json`), so the schema doesn't need separate `output.flag` and `output.value` fields. However, the `output` field is required by the adapter schema.
+
+Before acp-harness 0.4.3, specifying empty output values would add two empty strings as command arguments:
+
+```bash
+# Schema with empty output
+{
+  "command": ["codex", "exec", "--json", "-"],
+  "output": { "flag": "", "value": "" }
+}
+
+# Resulted in (WRONG):
+codex exec --json - "" ""
+```
+
+### Solution
+
+**acp-harness 0.4.3+:** Empty output flags are automatically skipped - no changes needed.
+
+**acp-harness 0.4.2 and earlier:** Use a workaround by putting the output format in the command array:
+
+```json
+{
+  "command": ["codex", "exec", "--json", "-"],
+  "output": { "flag": "--output-format", "value": "json" }
+}
+```
+
+Even though Codex doesn't use these flags, this prevents empty strings from being added.
+
+### When to Use Empty Output Flags
+
+Use empty `output.flag` and `output.value` when:
+- CLI has output format embedded in command
+- No additional flags needed for JSON output
+- acp-harness version is 0.4.3 or later
+
+**Examples:**
+- Codex: `codex exec --json` (format is in command)
+- Amp: `amp --stream-json` (format is in command)
+
+---
+
 ## Authentication and API Keys {#authentication-and-api-keys}
 
 ### Symptom
