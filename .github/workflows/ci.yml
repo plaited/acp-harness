@@ -54,7 +54,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install -g @google/gemini-cli
+          bun install --global @google/gemini-cli
           curl -fsSL https://claude.ai/install.sh | bash
           bun install --frozen-lockfile
 
