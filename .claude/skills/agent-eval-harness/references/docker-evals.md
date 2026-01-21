@@ -98,7 +98,7 @@ which gemini  # fails
 **Solution:** Verify symlinks point to accessible locations:
 ```bash
 # Debug inside container
-docker compose run --rm acp-test bash -c 'which gemini && ls -la $(which gemini)'
+docker compose run --rm test bash -c 'which gemini && ls -la $(which gemini)'
 ```
 
 ### 5. Environment Variables Not Passed
@@ -118,7 +118,7 @@ When tests fail in Docker, run these checks:
 
 ```bash
 # 1. Verify CLI installation and access
-docker compose run --rm acp-test bash -c '
+docker compose run --rm test bash -c '
   echo "=== Node.js ===" && node --version &&
   echo "=== Bun ===" && bun --version &&
   echo "=== Claude ===" && which claude && claude --version &&
@@ -126,18 +126,18 @@ docker compose run --rm acp-test bash -c '
 '
 
 # 2. Verify environment variables
-docker compose run --rm acp-test bash -c '
+docker compose run --rm test bash -c '
   echo "ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:+set}"
   echo "GEMINI_API_KEY: ${GEMINI_API_KEY:+set}"
 '
 
 # 3. Test CLI directly
-docker compose run --rm acp-test bash -c '
+docker compose run --rm test bash -c '
   gemini -p "Say hello" --output-format stream-json 2>&1 | head -5
 '
 
 # 4. Run as root to isolate permission issues
-docker compose run --rm --user root acp-test bash -c 'whoami && which claude'
+docker compose run --rm --user root test bash -c 'whoami && which claude'
 ```
 
 ## CI Integration (GitHub Actions)
@@ -151,7 +151,7 @@ test-integration:
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: docker compose -f docker-compose.test.yml run --rm acp-test
+      run: docker compose -f docker-compose.test.yml run --rm test
 ```
 
 ## Version Matrix
@@ -169,7 +169,7 @@ Tested configurations:
 
 ```yaml
 services:
-  acp-test:
+  test:
     build:
       context: .
       dockerfile: Dockerfile.test

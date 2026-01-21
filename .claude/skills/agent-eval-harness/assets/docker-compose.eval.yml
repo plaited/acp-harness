@@ -4,13 +4,13 @@
 # Copy this to your project and customize as needed.
 #
 # Usage:
-#   ANTHROPIC_API_KEY=sk-... docker compose -f docker-compose.acp.yml run --rm agent-eval-harness
+#   ANTHROPIC_API_KEY=sk-... docker compose -f docker-compose.eval.yml run --rm agent-eval-harness
 
 services:
   agent-eval-harness:
     build:
       context: .
-      dockerfile: Dockerfile.acp
+      dockerfile: Dockerfile.eval
     environment:
       - ANTHROPIC_API_KEY
     volumes:

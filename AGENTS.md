@@ -19,7 +19,7 @@ bun run check:write
 bun test
 
 # Run Docker integration tests (requires API keys)
-ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.test.yml run --rm acp-test
+ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.test.yml run --rm test
 ```
 
 ## Quick Reference

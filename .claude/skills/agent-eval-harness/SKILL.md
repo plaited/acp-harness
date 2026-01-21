@@ -437,10 +437,10 @@ bunx @plaited/agent-eval-harness schemas CaptureResult --json
 
 ```bash
 # Run integration tests via Docker
-docker compose -f docker-compose.test.yml run --rm acp-test
+docker compose -f docker-compose.test.yml run --rm test
 
 # Or with explicit API keys
-ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.test.yml run --rm acp-test
+ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... docker compose -f docker-compose.test.yml run --rm test
 ```
 
 ### Docker Requirements

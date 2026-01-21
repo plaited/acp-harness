@@ -266,6 +266,6 @@ Once your schema is working:
 
 1. Run the integration test suite with your schema
 2. Submit a PR to add it to the `schemas/` directory
-3. Include the integration test file as `integration_tests/acp-<agent>.spec.ts`
+3. Include the integration test file as `integration_tests/<agent>.spec.ts`
 
 Only schemas with passing integration tests are included in the official distribution.
