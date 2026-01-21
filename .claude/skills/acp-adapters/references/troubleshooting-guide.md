@@ -6,9 +6,10 @@ This guide documents common issues encountered when creating headless adapter sc
 
 1. [Tool Calls Not Appearing in Trajectories](#tool-calls-not-appearing)
 2. [Stdin Mode Issues](#stdin-mode-issues)
-3. [Authentication and API Keys](#authentication-and-api-keys)
-4. [JSONPath Debugging](#jsonpath-debugging)
-5. [Output Event Matching](#output-event-matching)
+3. [Empty Output Flags](#empty-output-flags)
+4. [Authentication and API Keys](#authentication-and-api-keys)
+5. [JSONPath Debugging](#jsonpath-debugging)
+6. [Output Event Matching](#output-event-matching)
 
 ---
 
