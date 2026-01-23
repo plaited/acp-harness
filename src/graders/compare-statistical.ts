@@ -96,6 +96,14 @@ const getIterationsFromEnv = (): number => {
  * are statistically significant. When confidence intervals don't overlap,
  * the difference is flagged as significant (p<0.05).
  *
+ * **Single-sample limitation:** When comparing individual prompts, each run
+ * provides only one score sample. Bootstrap with a single sample yields a
+ * degenerate CI of `[value, value]`. This grader is most useful when:
+ * - Aggregating results across multiple prompts
+ * - Using with the full comparison report (which combines per-prompt comparisons)
+ *
+ * For single-prompt comparisons, consider the weighted grader instead.
+ *
  * @public
  */
 export const grade: ComparisonGrader = async ({ runs }: ComparisonGraderInput): Promise<ComparisonGraderResult> => {
@@ -104,7 +112,7 @@ export const grade: ComparisonGrader = async ({ runs }: ComparisonGraderInput): 
   // Collect scores for each run
   const runStats = Object.entries(runs).map(([label, run]) => {
     // Use grader score if available, otherwise 0
-    const score = (run as { score?: { score?: number } }).score?.score ?? 0
+    const score = run.score?.score ?? 0
 
     // For single-prompt comparison, we only have one sample
     // In practice, this grader is most useful when aggregating across prompts
@@ -151,7 +159,7 @@ export const grade: ComparisonGrader = async ({ runs }: ComparisonGraderInput): 
 export const createStatisticalGrader = (iterations: number = DEFAULT_ITERATIONS): ComparisonGrader => {
   return async ({ runs }: ComparisonGraderInput): Promise<ComparisonGraderResult> => {
     const runStats = Object.entries(runs).map(([label, run]) => {
-      const score = (run as { score?: { score?: number } }).score?.score ?? 0
+      const score = run.score?.score ?? 0
       const stats = bootstrap([score], iterations)
       return { label, score, stats }
     })

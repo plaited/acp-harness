@@ -64,15 +64,15 @@ export const createWeightedGrader = (weights: Weights = DEFAULT_WEIGHTS): Compar
     const scores = Object.entries(runs).map(([label, run]) => {
       // Quality score: use grader score if available, otherwise 0
       // Note: run.score is only present if the result was graded
-      const qualityScore = (run as { score?: { score?: number } }).score?.score ?? 0
+      const qualityScore = run.score?.score ?? 0
 
       // Latency score: inverse relationship (faster = better)
       // Normalize: 1 / (1 + duration/1000) gives ~0.5 at 1s, ~0.1 at 10s
-      const duration = (run as { duration?: number }).duration ?? 10000
+      const duration = run.duration ?? 10000
       const latencyScore = 1 / (1 + duration / 1000)
 
       // Reliability score: 1 if no errors, 0 if errors
-      const hasErrors = (run as { toolErrors?: boolean }).toolErrors ?? false
+      const hasErrors = run.toolErrors ?? false
       const reliabilityScore = hasErrors ? 0 : 1
 
       // Weighted combination

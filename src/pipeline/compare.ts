@@ -349,8 +349,8 @@ export const runCompare = async (config: ExtendedCompareConfig): Promise<Compari
     }
 
     for (const [label, data] of Object.entries(runsData)) {
-      latencies[label] = (data as { duration?: number }).duration ?? 0
-      hadErrors[label] = (data as { toolErrors?: boolean }).toolErrors ?? false
+      latencies[label] = data.duration ?? 0
+      hadErrors[label] = data.toolErrors ?? false
     }
 
     promptComparisons.push({
@@ -507,7 +507,7 @@ export const runCompare = async (config: ExtendedCompareConfig): Promise<Compari
   }
 
   for (const [label, wins] of Object.entries(winCounts)) {
-    const pct = ((wins / promptComparisons.length) * 100).toFixed(1)
+    const pct = promptComparisons.length > 0 ? ((wins / promptComparisons.length) * 100).toFixed(1) : '0.0'
     logProgress(`  ${label}: ${wins} wins (${pct}%)`, progress)
   }
 
