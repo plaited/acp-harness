@@ -42,7 +42,7 @@ export const formatSummary = (result: CaptureResult): SummaryResult => {
     id: result.id,
     input: inputText,
     output: result.output,
-    toolCalls: result.trajectory.filter((s) => s.type === 'tool_call').map((s) => (s as { name: string }).name),
+    toolCalls: result.trajectory.flatMap((s) => (s.type === 'tool_call' ? [s.name] : [])),
     duration: result.timing.end - result.timing.start,
   }
 }
