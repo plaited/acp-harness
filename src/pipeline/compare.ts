@@ -129,6 +129,51 @@ const parseLabeledRun = (arg: string): LabeledRun => {
 }
 
 /**
+ * Validate that all run files exist.
+ *
+ * @param runs - Labeled runs to validate
+ * @throws Error if any file doesn't exist
+ */
+const validateRunFiles = async (runs: LabeledRun[]): Promise<void> => {
+  const missing: string[] = []
+
+  for (const run of runs) {
+    const exists = await Bun.file(run.path).exists()
+    if (!exists) {
+      missing.push(`${run.label}: ${run.path}`)
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Result file(s) not found:\n  ${missing.join('\n  ')}`)
+  }
+}
+
+/**
+ * Infer output format from file extension.
+ *
+ * @param outputPath - Output file path
+ * @param explicitFormat - Explicitly provided format (takes precedence)
+ * @returns Inferred format
+ */
+const inferFormat = (outputPath: string | undefined, explicitFormat: string | undefined): 'json' | 'markdown' => {
+  // Explicit format takes precedence
+  if (explicitFormat === 'json' || explicitFormat === 'markdown') {
+    return explicitFormat
+  }
+
+  // Infer from file extension
+  if (outputPath) {
+    const ext = extname(outputPath).toLowerCase()
+    if (ext === '.md' || ext === '.markdown') {
+      return 'markdown'
+    }
+  }
+
+  return 'json'
+}
+
+/**
  * Get grader function based on strategy.
  *
  * @param strategy - Comparison strategy
@@ -255,8 +300,8 @@ export const runCompare = async (config: ExtendedCompareConfig): Promise<Compari
   // Get grader based on strategy
   const grader = await getGrader(strategy, graderPath)
 
-  const strategyDesc = strategy === 'custom' ? `custom: ${graderPath}` : strategy
-  logProgress(`Comparing ${runs.length} runs with strategy: ${strategyDesc}`, progress)
+  const strategyLabel = strategy === 'custom' ? `custom: ${graderPath}` : strategy
+  logProgress(`Comparing ${runs.length} runs with strategy: ${strategyLabel}`, progress)
   for (const run of runs) {
     logProgress(`  - ${run.label}: ${run.path}`, progress)
   }
@@ -602,7 +647,6 @@ export const compare = async (args: string[]): Promise<void> => {
   })
 
   if (values.help) {
-    // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
 Usage: agent-eval-harness compare [files...] [options]
 
@@ -678,6 +722,14 @@ Examples:
     process.exit(1)
   }
 
+  // Validate that all run files exist (early error for better UX)
+  try {
+    await validateRunFiles(runs)
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : error}`)
+    process.exit(1)
+  }
+
   // Validate strategy
   const strategy = (values.strategy as CompareStrategy) ?? 'weighted'
   if (!['weighted', 'statistical', 'custom'].includes(strategy)) {
@@ -690,10 +742,10 @@ Examples:
     process.exit(1)
   }
 
-  // Validate format
-  const format = (values.format as 'json' | 'markdown') ?? 'json'
-  if (!['json', 'markdown'].includes(format)) {
-    console.error(`Error: Invalid format '${format}'. Use: json or markdown`)
+  // Validate format (explicit format takes precedence, otherwise infer from extension)
+  const format = inferFormat(values.output, values.format)
+  if (values.format && !['json', 'markdown'].includes(values.format)) {
+    console.error(`Error: Invalid format '${values.format}'. Use: json or markdown`)
     process.exit(1)
   }
 

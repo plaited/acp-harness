@@ -92,7 +92,6 @@ export const runValidateRefs = async (config: ValidateRefsConfig): Promise<Valid
   if (outputPath) {
     await Bun.write(resolvePath(outputPath), output)
   } else {
-    // biome-ignore lint/suspicious/noConsole: CLI stdout output
     console.log(output)
   }
 
@@ -132,7 +131,6 @@ export const validateRefs = async (args: string[]): Promise<void> => {
   })
 
   if (values.help) {
-    // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
 Usage: agent-eval-harness validate-refs <prompts.jsonl> --grader <grader.ts> [options]
 

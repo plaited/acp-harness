@@ -111,7 +111,6 @@ export const grade = async (args: string[]): Promise<void> => {
   })
 
   if (values.help) {
-    // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
 Usage: agent-eval-harness grade [extracted.jsonl] --grader <grader> [options]
 

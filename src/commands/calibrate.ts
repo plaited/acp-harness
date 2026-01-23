@@ -232,7 +232,6 @@ export const runCalibrate = async (config: CalibrateConfig): Promise<Calibration
   if (outputPath) {
     await Bun.write(resolvePath(outputPath), markdown)
   } else {
-    // biome-ignore lint/suspicious/noConsole: CLI stdout output
     console.log(markdown)
   }
 
@@ -261,7 +260,6 @@ export const calibrate = async (args: string[]): Promise<void> => {
   })
 
   if (values.help) {
-    // biome-ignore lint/suspicious/noConsole: CLI help output
     console.log(`
 Usage: agent-eval-harness calibrate <results.jsonl> [options]
 
