@@ -85,7 +85,7 @@ bunx @plaited/agent-eval-harness compare run1.jsonl run2.jsonl -o comparison.jso
 **Install skills** for use with AI coding agents:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agent <agent-name> --project agent-eval-harness
+curl -fsSL https://raw.githubusercontent.com/plaited/skills-installer/main/install.sh | bash -s -- --agents <agent-name> --project agent-eval-harness
 ```
 
 Replace `<agent-name>` with your agent: `claude`, `cursor`, `copilot`, `opencode`, `amp`, `goose`, `factory`
