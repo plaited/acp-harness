@@ -62,6 +62,8 @@ export type ExtractedResult = {
   toolErrors: boolean
   /** Optional metadata from original prompt */
   metadata?: Record<string, unknown>
+  /** Working directory path (optional, for git-based grading) */
+  cwd?: string
   /** Timing metadata */
   timing: {
     start: number
@@ -77,10 +79,13 @@ export type ExtractedResult = {
  *
  * @remarks
  * Adds grader score to extracted result.
+ * Outcome field is merged from grader result if present.
  */
 export type GradedResult = ExtractedResult & {
   /** Grader score */
   score: GraderResult
+  /** Outcome data from grader (if grader returned outcome) */
+  outcome?: Record<string, unknown>
 }
 
 /**

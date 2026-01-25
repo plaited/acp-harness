@@ -52,11 +52,17 @@ export const runGrade = async (
       hint: extracted.hint,
       trajectory: extracted.trajectory,
       metadata: extracted.metadata,
+      cwd: extracted.cwd,
     })
 
     const graded: GradedResult = {
       ...extracted,
       score,
+    }
+
+    // Merge outcome from grader if present
+    if (score.outcome) {
+      graded.outcome = score.outcome
     }
 
     const icon = score.pass ? '✓' : '✗'

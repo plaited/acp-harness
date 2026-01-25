@@ -217,10 +217,16 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
             hint: promptCase.hint,
             trajectory,
             metadata: promptCase.metadata,
+            cwd: session.cwd,
           })
           entry.pass = graderResult.pass
           entry.score = graderResult.score
           entry.reasoning = graderResult.reasoning
+
+          // Merge outcome from grader if present
+          if (graderResult.outcome) {
+            entry.outcome = graderResult.outcome
+          }
         }
 
         trialEntries.push(entry)
