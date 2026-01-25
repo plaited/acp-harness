@@ -342,12 +342,74 @@ export const grade: Grader = async ({ output, hint, cwd }) => {
 ### Best Practices for Git-Based Grading
 
 1. **Always check for `cwd`** - It's an optional parameter
-2. **Use `.nothrow()`** - Don't let failed commands crash the grader
-3. **Grade outcomes, not paths** - Check if tests pass, not which tools were used
-4. **Return structured outcomes** - Makes downstream analysis easier
-5. **Keep repos clean** - Run evals in clean working directories (`git status` should be clean)
-6. **Include reasoning** - Explain what git detected and why it passed/failed
-7. **Handle non-git gracefully** - Provide fallback logic for non-git environments
+2. **Validate paths for security** - See security notes below
+3. **Use `.nothrow()`** - Don't let failed commands crash the grader
+4. **Grade outcomes, not paths** - Check if tests pass, not which tools were used
+5. **Return structured outcomes** - Makes downstream analysis easier
+6. **Keep repos clean** - Run evals in clean working directories (`git status` should be clean)
+7. **Include reasoning** - Explain what git detected and why it passed/failed
+8. **Handle non-git gracefully** - Provide fallback logic for non-git environments
+
+### Security Considerations
+
+**IMPORTANT:** When using the `cwd` parameter in shell commands, validate paths to prevent command injection.
+
+```typescript
+import { resolve } from 'node:path'
+
+const isValidPath = (path: string): boolean => {
+  // Reject paths with shell metacharacters
+  const dangerousChars = /[;&|`$(){}[\]<>'"\\]/
+  if (dangerousChars.test(path)) {
+    return false
+  }
+  
+  // Reject directory traversal and option injection
+  if (path.includes('..') || path.startsWith('-')) {
+    return false
+  }
+  
+  return true
+}
+
+export const grade: Grader = async ({ cwd }) => {
+  if (!cwd || !isValidPath(cwd)) {
+    return { pass: false, score: 0, reasoning: 'Invalid path' }
+  }
+  
+  // Normalize path to prevent traversal
+  const safeCwd = resolve(cwd)
+  
+  // Now safe to use in shell commands
+  const result = await Bun.$`git -C ${safeCwd} status --porcelain`.text()
+  // ...
+}
+```
+
+**Trust boundary:** The `cwd` parameter typically comes from trusted sources (`process.cwd()`, CLI `--cwd` flag). If accepting paths from untrusted sources (e.g., JSONL metadata), always validate before using in shell commands.
+
+### Git Status Detection Scope
+
+The examples above detect:
+- **Untracked files** (`??`) - New files not yet staged
+- **Modified files** (`M` or ` M`) - Changed tracked files
+
+Not included in basic examples:
+- **Staged files** (`A`) - Files added to index
+- **Renamed files** (`R`) - Files moved/renamed
+- **Deleted files** (`D`) - Files removed
+- **Copied files** (`C`) - Files duplicated
+
+For comprehensive detection, parse all `git status --porcelain` codes. See `git status --help` for complete format specification.
+
+### Performance Note
+
+**Git-based grading has higher latency than output-based grading** because each grader invocation spawns multiple git processes (typically 2-3 per evaluation). For large evaluation batches:
+
+- Output-based grading: ~1-5ms per evaluation
+- Git-based grading: ~50-200ms per evaluation (depending on repo size)
+
+Use git-based grading when environmental outcomes matter more than speed. For high-throughput scenarios, consider batching or caching strategies.
 
 ### Outcome Field Benefits
 

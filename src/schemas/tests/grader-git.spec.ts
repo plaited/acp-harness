@@ -179,4 +179,44 @@ describe('Git-based grader', () => {
     expect(result.outcome?.filesCreated).toContain('input.tsx')
     expect(result.outcome?.filesModified).toEqual([])
   })
+
+  test('rejects path with command injection attempt', async () => {
+    const result = await grader({
+      input: 'Create a file',
+      output: 'Created file',
+      cwd: '/tmp/test; rm -rf /', // Command injection attempt
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.score).toBe(0)
+    expect(result.reasoning).toContain('Invalid working directory path')
+  })
+
+  test('rejects path with directory traversal', async () => {
+    const result = await grader({
+      input: 'Create a file',
+      output: 'Created file',
+      cwd: '/tmp/../../../etc', // Directory traversal
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.score).toBe(0)
+    expect(result.reasoning).toContain('Invalid working directory path')
+  })
+
+  test('rejects path with shell metacharacters', async () => {
+    const dangerousPaths = ['/tmp/test$(whoami)', '/tmp/test`id`', '/tmp/test|cat', '/tmp/test&echo', '/tmp/test>out']
+
+    for (const path of dangerousPaths) {
+      const result = await grader({
+        input: 'Create a file',
+        output: 'Created file',
+        cwd: path,
+      })
+
+      expect(result.pass).toBe(false)
+      expect(result.score).toBe(0)
+      expect(result.reasoning).toContain('Invalid working directory path')
+    }
+  })
 })

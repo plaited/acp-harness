@@ -192,19 +192,36 @@ Graders score agent outputs. The harness supports two types and two grading appr
 
 ```typescript
 import type { Grader } from '@plaited/agent-eval-harness/schemas'
+import { resolve } from 'node:path'
 
 export const grade: Grader = async ({ output, hint, cwd }) => {
-  if (!cwd) return { pass: false, score: 0, reasoning: 'No cwd' }
+  // Validate cwd to prevent command injection
+  const isValidPath = (path: string): boolean => {
+    const dangerousChars = /[;&|`$(){}[\]<>'"\\]/
+    if (dangerousChars.test(path)) return false
+    if (path.includes('..') || path.startsWith('-')) return false
+    return true
+  }
+
+  if (!cwd || !isValidPath(cwd)) {
+    return { 
+      pass: false, 
+      score: 0, 
+      reasoning: 'Invalid working directory path' 
+    }
+  }
+  
+  const safeCwd = resolve(cwd)
   
   // Detect file changes using git
-  const status = await Bun.$`git -C ${cwd} status --porcelain`.text()
+  const status = await Bun.$`git -C ${safeCwd} status --porcelain`.text()
   const filesCreated = status
     .split('\n')
     .filter(line => line.startsWith('??'))
     .map(line => line.slice(3).trim())
   
   // Run tests to verify outcome
-  const testResult = await Bun.$`cd ${cwd} && bun test`.nothrow()
+  const testResult = await Bun.$`cd ${safeCwd} && bun test`.nothrow()
   const testsPassed = testResult.exitCode === 0
   
   return {
@@ -256,17 +273,41 @@ Any executable script using stdin/stdout JSON protocol:
 import json
 import sys
 import subprocess
+import re
+import os
 
 data = json.load(sys.stdin)
 output = data["output"].lower()
 hint = (data.get("hint") or "").lower()
 cwd = data.get("cwd")
 
+# Validate cwd to prevent command injection
+def is_valid_path(path):
+    if not path:
+        return False
+    # Reject shell metacharacters
+    if re.search(r'[;&|`$(){}\[\]<>\'"\\]', path):
+        return False
+    # Reject directory traversal and option injection
+    if '..' in path or path.startswith('-'):
+        return False
+    return True
+
 # Git-based grading if cwd is provided
 if cwd:
+    if not is_valid_path(cwd):
+        print(json.dumps({
+            "pass": False,
+            "score": 0.0,
+            "reasoning": "Invalid working directory path"
+        }))
+        sys.exit(0)
+    
+    safe_cwd = os.path.abspath(cwd)
+    
     try:
         result = subprocess.run(
-            ["git", "-C", cwd, "status", "--porcelain"],
+            ["git", "-C", safe_cwd, "status", "--porcelain"],
             capture_output=True, text=True, check=True
         )
         files_created = [
