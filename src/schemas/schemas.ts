@@ -209,6 +209,7 @@ export type PromptCase = z.infer<typeof PromptCaseSchema>
  *
  * @remarks
  * Result returned by user-provided grader functions.
+ * - `outcome`: Optional structured outcome data detected by the grader
  */
 export const GraderResultSchema = z.object({
   /** Whether the output passes the evaluation criteria */
@@ -217,6 +218,8 @@ export const GraderResultSchema = z.object({
   score: z.number().min(0).max(1),
   /** Optional explanation for the score */
   reasoning: z.string().optional(),
+  /** Optional outcome data (e.g., files created, tests passed) */
+  outcome: z.record(z.string(), z.unknown()).optional(),
 })
 
 /** Grader result type */
@@ -230,6 +233,7 @@ export type GraderResult = z.infer<typeof GraderResultSchema>
  * - `input` is the original prompt (string or array for multi-turn)
  * - `hint` provides grader context (renamed from `expected`)
  * - `metadata` contains arbitrary key-value pairs from the original prompt JSONL
+ * - `cwd` is the working directory path (optional, enables git-based outcome detection)
  */
 export type Grader = (params: {
   input: string | string[]
@@ -237,6 +241,7 @@ export type Grader = (params: {
   hint?: string
   trajectory?: TrajectoryStep[]
   metadata?: Record<string, unknown>
+  cwd?: string
 }) => Promise<GraderResult>
 
 // ============================================================================
@@ -375,6 +380,7 @@ export type TrajectoryRichness = z.infer<typeof TrajectoryRichnessSchema>
  * - `input` can be string (single turn) or string[] (multi-turn)
  * - `hint` provides grader context (renamed from `expected`)
  * - `toolErrors` replaces misleading `status: 'passed'|'failed'`
+ * - `outcome` is merged from grader result if grader returns outcome data
  * Real pass/fail determination comes from your grader.
  */
 export const CaptureResultSchema = z.object({
@@ -398,6 +404,8 @@ export const CaptureResultSchema = z.object({
   errors: z.array(z.string()).optional(),
   /** Grader score (if grader was provided) */
   score: GraderResultSchema.optional(),
+  /** Outcome data from grader (if grader provided and returned outcome) */
+  outcome: z.record(z.string(), z.unknown()).optional(),
 })
 
 /** Capture result type */
@@ -449,6 +457,8 @@ export const TrialEntrySchema = z.object({
   score: z.number().optional(),
   /** Grader reasoning (if grader provided) */
   reasoning: z.string().optional(),
+  /** Outcome data from grader (if grader provided and returned outcome) */
+  outcome: z.record(z.string(), z.unknown()).optional(),
 })
 
 /** Trial entry type */

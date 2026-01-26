@@ -225,13 +225,21 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
 
       // Apply grader if provided
       if (grader) {
-        result.score = await grader({
+        const graderResult = await grader({
           input: promptCase.input,
           output,
           hint: promptCase.hint,
           trajectory,
           metadata: promptCase.metadata,
+          cwd: session.cwd,
         })
+
+        result.score = graderResult
+
+        // Merge outcome from grader if present
+        if (graderResult.outcome) {
+          result.outcome = graderResult.outcome
+        }
       }
 
       // Clean up session

@@ -47,6 +47,7 @@ const resolvePath = (path: string): string => {
  * The metadata field contains arbitrary key-value pairs from the original
  * prompt JSONL (e.g., category, difficulty, tags). Use this to implement
  * category-specific grading logic or filter calibration samples.
+ * The cwd field provides the working directory path for git-based outcome detection.
  */
 type ExecGraderInput = {
   input: string | string[]
@@ -54,6 +55,7 @@ type ExecGraderInput = {
   hint?: string
   trajectory?: TrajectoryStep[]
   metadata?: Record<string, unknown>
+  cwd?: string
 }
 
 /**
@@ -73,6 +75,8 @@ const createExecGrader = (execPath: string): Grader => {
       output: params.output,
       hint: params.hint,
       trajectory: params.trajectory,
+      metadata: params.metadata,
+      cwd: params.cwd,
     }
 
     const inputJson = JSON.stringify(input)
