@@ -47,8 +47,8 @@ export const grade: ComparisonGrader = async ({ runs }: ComparisonGraderInput): 
     return { label, score, stats }
   })
 
-  // Sort by bootstrap mean descending
-  const sorted = runStats.sort((a, b) => b.stats.mean - a.stats.mean)
+  // Sort by bootstrap median descending
+  const sorted = runStats.sort((a, b) => b.stats.median - a.stats.median)
 
   // Check if winner is statistically significant
   // CIs don't overlap = significant difference (approximately p<0.05)
@@ -68,7 +68,7 @@ export const grade: ComparisonGrader = async ({ runs }: ComparisonGraderInput): 
     rankings: sorted.map((s, i) => ({
       run: s.label,
       rank: i + 1,
-      score: s.stats.mean,
+      score: s.stats.median,
     })),
     reasoning,
   }
@@ -92,7 +92,7 @@ export const createStatisticalGrader = (iterations?: number): ComparisonGrader =
       return { label, score, stats }
     })
 
-    const sorted = runStats.sort((a, b) => b.stats.mean - a.stats.mean)
+    const sorted = runStats.sort((a, b) => b.stats.median - a.stats.median)
 
     let isSignificant = false
     const first = sorted[0]
@@ -105,7 +105,7 @@ export const createStatisticalGrader = (iterations?: number): ComparisonGrader =
       rankings: sorted.map((s, i) => ({
         run: s.label,
         rank: i + 1,
-        score: s.stats.mean,
+        score: s.stats.median,
       })),
       reasoning: isSignificant
         ? `Winner "${first?.label}" is statistically significant (p<0.05)`

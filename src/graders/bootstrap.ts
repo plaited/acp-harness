@@ -27,8 +27,8 @@ export type ConfidenceInterval = [number, number]
  * Bootstrap confidence interval result.
  */
 export type BootstrapResult = {
-  /** Estimated mean from bootstrap samples */
-  mean: number
+  /** Median of bootstrap sample means (50th percentile) */
+  median: number
   /** Confidence interval [lower, upper] */
   ci: ConfidenceInterval
 }
@@ -53,7 +53,7 @@ export type BootstrapConfig = {
  *
  * @param samples - Array of numeric samples
  * @param config - Optional bootstrap configuration
- * @returns Bootstrap mean and confidence interval
+ * @returns Bootstrap median and confidence interval
  *
  * @public
  */
@@ -62,12 +62,12 @@ export const bootstrap = (samples: number[], config?: BootstrapConfig): Bootstra
   const confidenceLevel = config?.confidenceLevel ?? DEFAULT_CONFIDENCE_LEVEL
 
   if (samples.length === 0) {
-    return { mean: 0, ci: [0, 0] }
+    return { median: 0, ci: [0, 0] }
   }
 
   if (samples.length === 1) {
     const value = samples[0] ?? 0
-    return { mean: value, ci: [value, value] }
+    return { median: value, ci: [value, value] }
   }
 
   const means: number[] = []
@@ -94,9 +94,23 @@ export const bootstrap = (samples: number[], config?: BootstrapConfig): Bootstra
   const upperIdx = Math.floor(iterations * (1 - alpha))
 
   return {
-    mean: means[Math.floor(iterations / 2)] ?? 0,
+    median: means[Math.floor(iterations / 2)] ?? 0,
     ci: [means[lowerIdx] ?? 0, means[upperIdx] ?? 0],
   }
+}
+
+/**
+ * Format confidence interval as string.
+ *
+ * @param ci - Confidence interval [lower, upper]
+ * @param decimals - Number of decimal places (default: 3)
+ * @returns Formatted CI string or empty string if undefined
+ *
+ * @public
+ */
+export const formatCI = (ci: ConfidenceInterval | undefined, decimals: number = 3): string => {
+  if (!ci) return ''
+  return `[${ci[0].toFixed(decimals)}, ${ci[1].toFixed(decimals)}]`
 }
 
 /**

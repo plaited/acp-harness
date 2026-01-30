@@ -42,10 +42,10 @@
     "check:types": "tsc --noEmit",
     "check:write": "biome check --write && format-package --write",
     "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && git config core.hooksPath .hooks || true",
-    "test:src": "bun test src/**/tests/*.spec.ts",
-     "test:bin": "bun test bin/tests/*.spec.ts",
-     "test":"bun run test:bin && bun test:src",
-     "test:integration": "bun test ./**/integration_tests/*.spec.ts"
+    "test": "bun run test:bin && bun test:src",
+    "test:bin": "bun test bin/tests/*.spec.ts",
+    "test:integration": "bun test ./**/integration_tests/*.spec.ts",
+    "test:src": "bun test src/**/tests/*.spec.ts"
   },
   "lint-staged": {
     "*.{js,cjs,jsx,tsx,ts}": [

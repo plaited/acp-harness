@@ -16,7 +16,7 @@
  */
 
 import { logProgress, writeOutput } from '../core.ts'
-import { bootstrap, getBootstrapConfigFromEnv } from '../graders/bootstrap.ts'
+import { bootstrap, formatCI, getBootstrapConfigFromEnv } from '../graders/bootstrap.ts'
 import { grade as statisticalGrade } from '../graders/trials-compare-statistical.ts'
 import { grade as weightedGrade } from '../graders/trials-compare-weighted.ts'
 import type {
@@ -542,18 +542,6 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
   logProgress('Done!', progress)
 
   return report
-}
-
-/**
- * Format confidence interval as string.
- *
- * @param ci - Confidence interval [lower, upper]
- * @param decimals - Number of decimal places
- * @returns Formatted CI string or empty string if undefined
- */
-const formatCI = (ci: [number, number] | undefined, decimals: number = 3): string => {
-  if (!ci) return ''
-  return `[${ci[0].toFixed(decimals)}, ${ci[1].toFixed(decimals)}]`
 }
 
 /**

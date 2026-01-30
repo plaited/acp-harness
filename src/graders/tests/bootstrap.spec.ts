@@ -3,50 +3,50 @@
  */
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { bootstrap, DEFAULT_CONFIDENCE_LEVEL, DEFAULT_ITERATIONS, getBootstrapConfigFromEnv } from './bootstrap.ts'
+import { bootstrap, DEFAULT_CONFIDENCE_LEVEL, DEFAULT_ITERATIONS, getBootstrapConfigFromEnv } from '../bootstrap.ts'
 
 describe('bootstrap', () => {
   describe('edge cases', () => {
-    test('returns {mean: 0, ci: [0, 0]} for empty array', () => {
+    test('returns {median: 0, ci: [0, 0]} for empty array', () => {
       const result = bootstrap([])
-      expect(result.mean).toBe(0)
+      expect(result.median).toBe(0)
       expect(result.ci).toEqual([0, 0])
     })
 
-    test('returns {mean: value, ci: [value, value]} for single sample', () => {
+    test('returns {median: value, ci: [value, value]} for single sample', () => {
       const result = bootstrap([0.75])
-      expect(result.mean).toBe(0.75)
+      expect(result.median).toBe(0.75)
       expect(result.ci).toEqual([0.75, 0.75])
     })
 
     test('handles single sample of 0', () => {
       const result = bootstrap([0])
-      expect(result.mean).toBe(0)
+      expect(result.median).toBe(0)
       expect(result.ci).toEqual([0, 0])
     })
 
     test('handles single sample of 1', () => {
       const result = bootstrap([1])
-      expect(result.mean).toBe(1)
+      expect(result.median).toBe(1)
       expect(result.ci).toEqual([1, 1])
     })
   })
 
   describe('confidence interval bounds', () => {
-    test('CI lower bound <= mean <= CI upper bound', () => {
+    test('CI lower bound <= median <= CI upper bound', () => {
       const samples = [0.5, 0.6, 0.7, 0.8, 0.9]
       const result = bootstrap(samples, { iterations: 1000 })
 
-      expect(result.ci[0]).toBeLessThanOrEqual(result.mean)
-      expect(result.mean).toBeLessThanOrEqual(result.ci[1])
+      expect(result.ci[0]).toBeLessThanOrEqual(result.median)
+      expect(result.median).toBeLessThanOrEqual(result.ci[1])
     })
 
-    test('CI contains the true mean for uniform samples', () => {
+    test('CI contains the true median for uniform samples', () => {
       // For identical samples, CI should collapse to the value
       const samples = [0.5, 0.5, 0.5, 0.5, 0.5]
       const result = bootstrap(samples, { iterations: 1000 })
 
-      expect(result.mean).toBeCloseTo(0.5, 2)
+      expect(result.median).toBeCloseTo(0.5, 2)
       expect(result.ci[0]).toBeCloseTo(0.5, 2)
       expect(result.ci[1]).toBeCloseTo(0.5, 2)
     })
@@ -69,12 +69,12 @@ describe('bootstrap', () => {
     test('uses default iterations when not specified', () => {
       // Just verify it runs without error with defaults
       const result = bootstrap([0.5, 0.6, 0.7])
-      expect(result.mean).toBeGreaterThan(0)
+      expect(result.median).toBeGreaterThan(0)
     })
 
     test('accepts custom iteration count', () => {
       const result = bootstrap([0.5, 0.6, 0.7], { iterations: 100 })
-      expect(result.mean).toBeGreaterThan(0)
+      expect(result.median).toBeGreaterThan(0)
     })
 
     test('accepts custom confidence level', () => {
@@ -94,14 +94,14 @@ describe('bootstrap', () => {
   })
 
   describe('statistical properties', () => {
-    test('mean is close to sample mean', () => {
+    test('median is close to sample mean', () => {
       const samples = [0.2, 0.4, 0.6, 0.8, 1.0]
       const sampleMean = samples.reduce((a, b) => a + b, 0) / samples.length
 
       const result = bootstrap(samples, { iterations: 10000 })
 
-      // Bootstrap mean should be close to sample mean
-      expect(result.mean).toBeCloseTo(sampleMean, 1)
+      // Bootstrap median should be close to sample mean for symmetric distributions
+      expect(result.median).toBeCloseTo(sampleMean, 1)
     })
 
     test('is deterministic-ish for large iteration counts', () => {
@@ -111,7 +111,7 @@ describe('bootstrap', () => {
       const result1 = bootstrap(samples, { iterations: 10000 })
       const result2 = bootstrap(samples, { iterations: 10000 })
 
-      expect(result1.mean).toBeCloseTo(result2.mean, 1)
+      expect(result1.median).toBeCloseTo(result2.median, 1)
     })
   })
 })

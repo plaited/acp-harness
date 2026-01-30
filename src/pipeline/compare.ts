@@ -25,7 +25,7 @@
 import { basename, extname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildResultsIndex, logProgress, writeOutput } from '../core.ts'
-import { bootstrap, getBootstrapConfigFromEnv } from '../graders/bootstrap.ts'
+import { bootstrap, formatCI, getBootstrapConfigFromEnv } from '../graders/bootstrap.ts'
 import { grade as statisticalGrade } from '../graders/compare-statistical.ts'
 import { grade as weightedGrade } from '../graders/compare-weighted.ts'
 import type {
@@ -607,18 +607,6 @@ export const runCompare = async (config: ExtendedCompareConfig): Promise<Compari
  * @param report - Comparison report
  * @returns Markdown string
  */
-/**
- * Format confidence interval as string.
- *
- * @param ci - Confidence interval [lower, upper]
- * @param decimals - Number of decimal places
- * @returns Formatted CI string or empty string if undefined
- */
-const formatCI = (ci: [number, number] | undefined, decimals: number = 3): string => {
-  if (!ci) return ''
-  return `[${ci[0].toFixed(decimals)}, ${ci[1].toFixed(decimals)}]`
-}
-
 const formatReportAsMarkdown = (report: ComparisonReport): string => {
   const lines: string[] = []
 
