@@ -407,6 +407,31 @@ COMPARE_CAPABILITY=0.5 COMPARE_RELIABILITY=0.3 COMPARE_CONSISTENCY=0.2 \
 }
 ```
 
+With `--strategy statistical`, quality and performance metrics include 95% confidence intervals:
+
+```json
+{
+  "quality": {
+    "baseline": {
+      "avgScore": 0.85,
+      "passRate": 0.82,
+      "confidenceIntervals": {
+        "avgScore": [0.82, 0.88],
+        "passRate": [0.79, 0.85]
+      }
+    }
+  },
+  "performance": {
+    "baseline": {
+      "latency": { "p50": 1200, "mean": 1350 },
+      "confidenceIntervals": {
+        "latencyMean": [1280, 1420]
+      }
+    }
+  }
+}
+```
+
 **TrialResult format** outputs `TrialsComparisonReport`:
 
 ```json
@@ -419,6 +444,25 @@ COMPARE_CAPABILITY=0.5 COMPARE_RELIABILITY=0.3 COMPARE_CONSISTENCY=0.2 \
     "capability": [{ "runA": "claude", "runB": "gemini", "aWins": 28, "bWins": 18, "ties": 4 }],
     "reliability": [...],
     "overall": [...]
+  }
+}
+```
+
+With `--strategy statistical`, capability and reliability metrics include 95% confidence intervals:
+
+```json
+{
+  "capability": {
+    "claude": {
+      "avgPassAtK": 0.92,
+      "confidenceIntervals": { "avgPassAtK": [0.88, 0.95] }
+    }
+  },
+  "reliability": {
+    "claude": {
+      "avgPassExpK": 0.78,
+      "confidenceIntervals": { "avgPassExpK": [0.72, 0.84] }
+    }
   }
 }
 ```
