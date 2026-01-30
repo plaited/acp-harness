@@ -210,6 +210,146 @@ describe('runTrialsCompare', () => {
     expect(report.meta.runs).toEqual(['better', 'worse'])
   })
 
+  test('statistical strategy computes confidence intervals for capability metrics', async () => {
+    const run1Path = `${tempDir}/ci-cap-run1.jsonl`
+    const run2Path = `${tempDir}/ci-cap-run2.jsonl`
+
+    // Create multiple prompts for meaningful CI computation
+    const trials1 = [
+      createTrialResult('p1', 0.9, 0.8),
+      createTrialResult('p2', 0.85, 0.7),
+      createTrialResult('p3', 0.95, 0.9),
+    ]
+    const trials2 = [
+      createTrialResult('p1', 0.6, 0.4),
+      createTrialResult('p2', 0.5, 0.3),
+      createTrialResult('p3', 0.7, 0.5),
+    ]
+
+    await Bun.write(run1Path, trials1.map((t) => JSON.stringify(t)).join('\n'))
+    await Bun.write(run2Path, trials2.map((t) => JSON.stringify(t)).join('\n'))
+
+    const report = await runTrialsCompare({
+      runs: [
+        { label: 'high', path: run1Path },
+        { label: 'low', path: run2Path },
+      ],
+      strategy: 'statistical',
+      progress: false,
+    })
+
+    // Verify confidence intervals are computed for capability
+    const highCap = report.capability.high
+    expect(highCap).toBeDefined()
+    expect(highCap?.confidenceIntervals).toBeDefined()
+    expect(highCap?.confidenceIntervals?.avgPassAtK).toBeDefined()
+
+    // CI should be a tuple [lower, upper]
+    const ci = highCap?.confidenceIntervals?.avgPassAtK
+    expect(ci).toHaveLength(2)
+    expect(ci?.[0]).toBeLessThanOrEqual(ci?.[1] ?? 0)
+
+    // CI should contain the average (within reasonable bounds)
+    expect(ci?.[0]).toBeLessThanOrEqual(highCap?.avgPassAtK ?? 0)
+    expect(ci?.[1]).toBeGreaterThanOrEqual(highCap?.avgPassAtK ?? 1)
+  })
+
+  test('statistical strategy computes confidence intervals for reliability metrics', async () => {
+    const run1Path = `${tempDir}/ci-rel-run1.jsonl`
+    const run2Path = `${tempDir}/ci-rel-run2.jsonl`
+
+    const trials1 = [
+      createTrialResult('p1', 0.9, 0.85),
+      createTrialResult('p2', 0.8, 0.75),
+      createTrialResult('p3', 0.85, 0.8),
+    ]
+    const trials2 = [
+      createTrialResult('p1', 0.7, 0.3),
+      createTrialResult('p2', 0.6, 0.2),
+      createTrialResult('p3', 0.65, 0.25),
+    ]
+
+    await Bun.write(run1Path, trials1.map((t) => JSON.stringify(t)).join('\n'))
+    await Bun.write(run2Path, trials2.map((t) => JSON.stringify(t)).join('\n'))
+
+    const report = await runTrialsCompare({
+      runs: [
+        { label: 'reliable', path: run1Path },
+        { label: 'flaky', path: run2Path },
+      ],
+      strategy: 'statistical',
+      progress: false,
+    })
+
+    // Verify confidence intervals are computed for reliability
+    const reliableRel = report.reliability.reliable
+    expect(reliableRel).toBeDefined()
+    expect(reliableRel?.confidenceIntervals).toBeDefined()
+    expect(reliableRel?.confidenceIntervals?.avgPassExpK).toBeDefined()
+
+    // CI should be a tuple [lower, upper]
+    const ci = reliableRel?.confidenceIntervals?.avgPassExpK
+    expect(ci).toHaveLength(2)
+    expect(ci?.[0]).toBeLessThanOrEqual(ci?.[1] ?? 0)
+  })
+
+  test('weighted strategy does not compute confidence intervals', async () => {
+    const run1Path = `${tempDir}/no-ci-run1.jsonl`
+    const run2Path = `${tempDir}/no-ci-run2.jsonl`
+
+    const trial1 = createTrialResult('test-001', 0.9, 0.7)
+    const trial2 = createTrialResult('test-001', 0.5, 0.3)
+
+    await Bun.write(run1Path, JSON.stringify(trial1))
+    await Bun.write(run2Path, JSON.stringify(trial2))
+
+    const report = await runTrialsCompare({
+      runs: [
+        { label: 'run1', path: run1Path },
+        { label: 'run2', path: run2Path },
+      ],
+      strategy: 'weighted', // Default strategy
+      progress: false,
+    })
+
+    // Confidence intervals should NOT be present for weighted strategy
+    const cap = report.capability.run1
+    expect(cap?.confidenceIntervals).toBeUndefined()
+
+    const rel = report.reliability.run1
+    expect(rel?.confidenceIntervals).toBeUndefined()
+  })
+
+  test('statistical strategy includes CIs in markdown output', async () => {
+    const run1Path = `${tempDir}/ci-md-run1.jsonl`
+    const run2Path = `${tempDir}/ci-md-run2.jsonl`
+    const outputPath = `${tempDir}/ci-report.md`
+
+    const trials1 = [createTrialResult('p1', 0.9, 0.8), createTrialResult('p2', 0.85, 0.75)]
+    const trials2 = [createTrialResult('p1', 0.6, 0.4), createTrialResult('p2', 0.5, 0.3)]
+
+    await Bun.write(run1Path, trials1.map((t) => JSON.stringify(t)).join('\n'))
+    await Bun.write(run2Path, trials2.map((t) => JSON.stringify(t)).join('\n'))
+
+    await runTrialsCompare({
+      runs: [
+        { label: 'agent1', path: run1Path },
+        { label: 'agent2', path: run2Path },
+      ],
+      strategy: 'statistical',
+      outputPath,
+      format: 'markdown',
+      progress: false,
+    })
+
+    const content = await Bun.file(outputPath).text()
+
+    // Markdown should include 95% CI column headers
+    expect(content).toContain('95% CI')
+    // Should contain CI values in bracket format [lower, upper]
+    expect(content).toMatch(/\[\d+\.\d+, \d+\.\d+\]/)
+  })
+
   test('computes correct capability metrics', async () => {
     const run1Path = `${tempDir}/cap-run1.jsonl`
 
