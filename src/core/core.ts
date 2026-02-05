@@ -14,6 +14,14 @@
 export { buildResultsIndex, countLines, loadJsonl, loadPrompts, loadResults, streamResults } from './loading.ts'
 // Output utilities
 export { getInputPreview, headTailPreview, logProgress, resolvePath, writeOutput } from './output.ts'
+// Native streaming utilities
+export {
+  countLinesStreaming,
+  streamJsonl,
+  streamPrompts,
+  streamResultsNative,
+  streamTrialResults,
+} from './streaming.ts'
 // Trajectory utilities
 export {
   detectTrajectoryRichness,

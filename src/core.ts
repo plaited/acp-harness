@@ -11,6 +11,8 @@ export {
   // Loading
   buildResultsIndex,
   countLines,
+  // Native streaming
+  countLinesStreaming,
   // Worker pool
   createWorkspaceDir,
   createWriteMutex,
@@ -31,7 +33,11 @@ export {
   type ProgressCallback,
   resolvePath,
   runWorkerPool,
+  streamJsonl,
+  streamPrompts,
   streamResults,
+  streamResultsNative,
+  streamTrialResults,
   type WorkerPoolOptions,
   type WorkerPoolResult,
   type WriteMutex,

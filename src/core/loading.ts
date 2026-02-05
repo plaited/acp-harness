@@ -99,12 +99,21 @@ export const loadJsonl = async <T = unknown>(path: string): Promise<T[]> => {
 // Streaming Loading
 // ============================================================================
 
+// Re-export native streaming functions for backward compatibility
+export {
+  countLinesStreaming,
+  streamJsonl,
+  streamPrompts,
+  streamResultsNative,
+  streamTrialResults,
+} from './streaming.ts'
+
 /**
  * Stream capture results from a JSONL file.
  *
  * @remarks
  * Memory-efficient alternative to loadResults for large files.
- * Yields results one at a time using an async generator.
+ * Uses native streaming via Bun.file().stream() for O(1) memory usage.
  *
  * @param path - Path to the results.jsonl file
  * @yields Parsed and validated capture results
@@ -113,20 +122,8 @@ export const loadJsonl = async <T = unknown>(path: string): Promise<T[]> => {
  * @public
  */
 export async function* streamResults(path: string): AsyncGenerator<CaptureResult, void, unknown> {
-  const file = Bun.file(path)
-  const text = await file.text()
-  const lines = text.split('\n')
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]?.trim()
-    if (!line) continue
-
-    try {
-      yield CaptureResultSchema.parse(JSON.parse(line))
-    } catch (error) {
-      throw new Error(`Invalid result at line ${i + 1}: ${error instanceof Error ? error.message : error}`)
-    }
-  }
+  const { streamResultsNative } = await import('./streaming.ts')
+  yield* streamResultsNative(path)
 }
 
 /**
@@ -159,7 +156,7 @@ export const buildResultsIndex = async (path: string): Promise<Map<string, Captu
  *
  * @remarks
  * Useful for detecting large files that should use streaming mode.
- * Uses byte-level scanning for efficiency.
+ * Uses native streaming for O(1) memory usage.
  *
  * @param path - Path to the JSONL file
  * @returns Number of non-empty lines
@@ -167,7 +164,6 @@ export const buildResultsIndex = async (path: string): Promise<Map<string, Captu
  * @public
  */
 export const countLines = async (path: string): Promise<number> => {
-  const file = Bun.file(path)
-  const text = await file.text()
-  return text.split('\n').filter((line) => line.trim()).length
+  const { countLinesStreaming } = await import('./streaming.ts')
+  return countLinesStreaming(path)
 }
