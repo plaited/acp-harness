@@ -292,6 +292,11 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
       ...(promptCase.hint && { hint: promptCase.hint }),
       k,
       trials: trialEntries,
+      metadata: {
+        ...promptCase.metadata,
+        agent: schema.name,
+        ...(resolvedWorkspaceDir && { workspaceDir: resolvedWorkspaceDir }),
+      },
     }
 
     // Calculate metrics if grader was used
