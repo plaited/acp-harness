@@ -329,6 +329,128 @@ export const grade: ComparisonGrader = async ({ runs }) => {
 | Complex multi-criteria scoring | `custom` (logic-based) |
 | Tool usage analysis | `custom` (see above) |
 
+## Hybrid Graders (Weighted + LLM)
+
+Layer LLM-as-Judge on top of built-in `weighted` comparison for balanced scoring.
+
+### Architecture
+
+| Component | Weight | Source |
+|-----------|--------|--------|
+| **Weighted score** | 50% | Built-in: quality, latency, reliability |
+| **LLM Judge** | 50% | Semantic quality assessment |
+
+```
+final_score = (weighted_score × 0.5) + (llm_score × 0.5)
+```
+
+**Why 50/50?**
+- Weighted catches objective metrics (speed, errors, prior grading)
+- LLM catches semantic quality (relevance, completeness, accuracy)
+- Neither alone is sufficient for production comparisons
+
+### Available Context
+
+```
+{ id, input, hint?, metadata?, runs: { [label]: { output, trajectory?, score?, duration?, toolErrors? } } }
+```
+
+`hint` and prior `score` (from inline grading) are available for LLM context.
+
+### Implementation (Any Language)
+
+Graders use stdin/stdout JSON protocol. Example patterns:
+
+**TypeScript:**
+```typescript
+import type { ComparisonGrader } from '@plaited/agent-eval-harness/pipeline'
+
+export const grade: ComparisonGrader = async ({ input, hint, runs }) => {
+  const scored = await Promise.all(
+    Object.entries(runs).map(async ([label, run]) => {
+      // 50%: Use prior score from weighted/inline grading
+      const weighted = run.score?.score ?? 0
+
+      // 50%: LLM semantic assessment
+      const llm = await llmJudge(input, run.output, hint)
+
+      return { label, score: (weighted * 0.5) + (llm * 0.5) }
+    })
+  )
+  return { rankings: rank(scored) }
+}
+```
+
+**Python:**
+```python
+#!/usr/bin/env python3
+import json, sys
+
+data = json.load(sys.stdin)
+scored = []
+
+for label, run in data["runs"].items():
+    weighted = run.get("score", {}).get("score", 0)  # Prior grading
+    llm = llm_judge(data["input"], run["output"], data.get("hint"))
+    scored.append({"run": label, "score": (weighted * 0.5) + (llm * 0.5)})
+
+ranked = sorted(scored, key=lambda x: -x["score"])
+print(json.dumps({
+    "rankings": [{"run": r["run"], "rank": i+1, "score": r["score"]}
+                 for i, r in enumerate(ranked)]
+}))
+```
+
+### LLM Judge Component
+
+The LLM evaluates semantic quality (0-1 normalized):
+
+```python
+def llm_judge(input, output, hint=None):
+    prompt = f"""Rate this response 0-100:
+Task: {input}
+{"Expected: " + hint if hint else ""}
+Response: {output}
+
+Criteria: relevance, completeness, accuracy, clarity
+Return only the number."""
+
+    score = int(llm_call(prompt)) / 100
+    return max(0, min(1, score))
+```
+
+### Workflow
+
+1. Run `capture` with inline `--grader` to get per-result scores
+2. Run `compare --strategy custom --grader ./hybrid.py`
+3. Hybrid grader combines prior scores (50%) + LLM judgment (50%)
+
+```bash
+# Step 1: Capture with inline grader
+agent-eval-harness capture prompts.jsonl -s claude.json -g ./grader.ts -o run-a.jsonl
+agent-eval-harness capture prompts.jsonl -s gemini.json -g ./grader.ts -o run-b.jsonl
+
+# Step 2: Compare with hybrid grader
+agent-eval-harness compare run-a.jsonl run-b.jsonl \
+  --strategy custom --grader ./hybrid-compare.py -o comparison.json
+```
+
+### Calibration
+
+1. **Fallback**: Without LLM API key, use weighted-only (score × 1.0)
+2. **Caching**: Cache LLM calls by hash(input + output) to reduce cost
+3. **Threshold**: Adjust pass threshold based on labeled samples
+
+### Trials Variant
+
+For `TrialsComparisonGrader`, combine passAtK metrics with LLM assessment of best trial:
+
+```python
+weighted = (run["passAtK"] * 0.5) + (run["passExpK"] * 0.3) + consistency * 0.2
+llm = llm_judge_best_trial(run["trials"])
+final = (weighted * 0.5) + (llm * 0.5)
+```
+
 ## Related Documentation
 
 - [inline-graders.md](inline-graders.md) - Single input/output graders

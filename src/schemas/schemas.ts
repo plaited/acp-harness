@@ -488,6 +488,8 @@ export const TrialResultSchema = z.object({
   passExpK: z.number().optional(),
   /** Individual trial results */
   trials: z.array(TrialEntrySchema),
+  /** Metadata including agent info, workspaceDir, and custom fields */
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
 /** Trial result type */
