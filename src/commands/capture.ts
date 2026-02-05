@@ -322,9 +322,7 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   const { results, errors } = await runWorkerPool(prompts, processPrompt, {
     concurrency,
     onProgress: (completed, total) => {
-      if (concurrency > 1) {
-        logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
-      }
+      logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
     },
   })
 

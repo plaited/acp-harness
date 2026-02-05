@@ -323,9 +323,7 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
   const { results, errors } = await runWorkerPool(prompts, processPromptTrials, {
     concurrency,
     onProgress: (completed, total) => {
-      if (concurrency > 1) {
-        logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
-      }
+      logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
     },
   })
 

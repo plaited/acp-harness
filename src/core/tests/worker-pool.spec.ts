@@ -303,4 +303,75 @@ describe('worker pool with write mutex integration', () => {
     // Order depends on which worker finishes first, but all should be present
     expect(writeOrder.length).toBe(5)
   })
+
+  test('produces valid JSONL with concurrent writes to file', async () => {
+    const mutex = createWriteMutex()
+    const items = Array.from({ length: 10 }, (_, i) => ({ id: `test-${i}`, value: i }))
+
+    // Collect lines in memory, then verify structure
+    const lines: string[] = []
+
+    await runWorkerPool(
+      items,
+      async (item) => {
+        // Simulate variable processing time
+        await Bun.sleep(Math.random() * 30)
+
+        // Write JSONL line with mutex coordination (same pattern as capture.ts)
+        await mutex.write(async () => {
+          const line = JSON.stringify(item)
+          lines.push(line)
+        })
+
+        return item
+      },
+      { concurrency: 4 },
+    )
+
+    // Should have all 10 items
+    expect(lines.length).toBe(10)
+
+    // Each line should be valid JSON
+    const parsed = lines.map((line) => JSON.parse(line))
+    const ids = parsed.map((p) => p.id).sort()
+
+    // All items present (order may vary)
+    expect(ids).toEqual(items.map((i) => i.id).sort())
+  })
+
+  test('creates workspace directories concurrently without collision', async () => {
+    const testBase = '/tmp/worker-pool-workspace-test'
+    const items = ['prompt-1', 'prompt-2', 'prompt-3', 'prompt-4', 'prompt-5']
+
+    // Clean up first
+    try {
+      await rm(testBase, { recursive: true, force: true })
+    } catch {
+      // Ignore
+    }
+
+    const createdDirs: string[] = []
+
+    await runWorkerPool(
+      items,
+      async (promptId) => {
+        const dir = await createWorkspaceDir(testBase, promptId)
+        createdDirs.push(dir)
+        return dir
+      },
+      { concurrency: 5 },
+    )
+
+    // All directories created
+    expect(createdDirs.length).toBe(5)
+
+    // Verify each directory exists
+    for (const dir of createdDirs) {
+      const exists = await dirExists(dir)
+      expect(exists).toBe(true)
+    }
+
+    // Cleanup
+    await rm(testBase, { recursive: true, force: true })
+  })
 })
