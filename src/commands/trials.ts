@@ -404,6 +404,12 @@ Parallelization:
   Each prompt's k trials still run sequentially (required for aggregation).
   With 151 prompts and -j 4, you get 4 prompts running trials concurrently.
 
+  Memory: Stream-mode agents (e.g. Claude Code) spawn real subprocesses
+  at ~400-500MB RSS each. With -j 8 that is 3-4GB of resident memory.
+  In memory-constrained environments (Docker, CI) this can cause OOM kills.
+  Use --max-workers-rss to pause spawning when RSS exceeds a threshold,
+  or pipe prompts via --stdin for container-level orchestration.
+
 Workspace Isolation:
   Use --workspace-dir to create per-trial directories.
   Each trial runs in {workspace-dir}/prompt-{id}-trial-{n}/.
