@@ -31,6 +31,7 @@ export {
   loadResults,
   logProgress,
   type ProgressCallback,
+  readStdinPrompts,
   resolvePath,
   runWorkerPool,
   streamJsonl,

@@ -8,6 +8,7 @@
  * @packageDocumentation
  */
 
+import { createInterface } from 'node:readline'
 import type { CaptureResult, PromptCase } from '../schemas.ts'
 import { CaptureResultSchema, PromptCaseSchema } from '../schemas.ts'
 
@@ -37,6 +38,44 @@ export const loadPrompts = async (path: string): Promise<PromptCase[]> => {
         throw new Error(`Invalid prompt at line ${index + 1}: ${error instanceof Error ? error.message : error}`)
       }
     })
+}
+
+/**
+ * Read prompts from stdin as JSONL.
+ *
+ * @remarks
+ * Reads all lines from stdin, parses each as JSON, and validates against
+ * PromptCaseSchema. Returns null when stdin is a TTY (no piped input).
+ * Uses readline for line-by-line processing to avoid buffering the
+ * entire input into memory.
+ *
+ * @returns Parsed and validated prompt cases, or null if stdin is a TTY
+ * @throws Error if any line is invalid JSON or fails schema validation
+ *
+ * @public
+ */
+export const readStdinPrompts = async (): Promise<PromptCase[] | null> => {
+  if (process.stdin.isTTY) {
+    return null
+  }
+
+  const lines: string[] = []
+  const rl = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY })
+
+  for await (const line of rl) {
+    const trimmed = line.trim()
+    if (trimmed) lines.push(trimmed)
+  }
+
+  if (lines.length === 0) return null
+
+  return lines.map((line, index) => {
+    try {
+      return PromptCaseSchema.parse(JSON.parse(line))
+    } catch (error) {
+      throw new Error(`Invalid stdin prompt at line ${index + 1}: ${error instanceof Error ? error.message : error}`)
+    }
+  })
 }
 
 /**
