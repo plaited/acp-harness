@@ -79,8 +79,6 @@ export type CaptureConfig = {
   debug?: boolean
   /** Number of concurrent workers (default: 1 for sequential) */
   concurrency?: number
-  /** RSS limit in bytes; pauses spawning when process RSS exceeds this */
-  maxWorkersRss?: number
   /** Base directory for per-prompt workspace isolation */
   workspaceDir?: string
 }
@@ -111,7 +109,6 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
     grader,
     debug = false,
     concurrency = 1,
-    maxWorkersRss,
     workspaceDir,
   } = config
 
@@ -151,9 +148,6 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   logProgress(`Timeout: ${effectiveTimeout}ms`, progress)
   if (concurrency > 1) {
     logProgress(`Concurrency: ${concurrency} workers`, progress)
-  }
-  if (maxWorkersRss) {
-    logProgress(`RSS limit: ${Math.round(maxWorkersRss / 1024 / 1024)}MB`, progress)
   }
   if (resolvedWorkspaceDir) {
     logProgress(`Workspace: ${resolvedWorkspaceDir}`, progress)
@@ -335,13 +329,6 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   // Run with worker pool
   const { results, errors } = await runWorkerPool(prompts, processPrompt, {
     concurrency,
-    maxWorkersRss,
-    onThrottle: (currentRss, limit) => {
-      logProgress(
-        `RSS throttle: ${Math.round(currentRss / 1024 / 1024)}MB > ${Math.round(limit / 1024 / 1024)}MB limit, pausing...`,
-        progress,
-      )
-    },
     onProgress: (completed, total) => {
       logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
     },
@@ -379,7 +366,6 @@ export const capture = async (args: string[]): Promise<void> => {
       debug: { type: 'boolean', default: false },
       stdin: { type: 'boolean', default: false },
       concurrency: { type: 'string', short: 'j' },
-      'max-workers-rss': { type: 'string' },
       'workspace-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -401,7 +387,6 @@ Options:
   -t, --timeout     Request timeout in ms (overrides schema default)
   -j, --concurrency Number of concurrent workers (default: 1)
   --stdin           Read prompts from stdin (mutually exclusive with file arg)
-  --max-workers-rss RSS limit in MB; pauses spawning when exceeded
   --workspace-dir   Base directory for per-prompt workspace isolation
   --progress        Show progress to stderr
   --append          Append to output file instead of overwriting
@@ -430,8 +415,7 @@ Parallelization:
   Memory: Stream-mode agents (e.g. Claude Code) spawn real subprocesses
   at ~400-500MB RSS each. With -j 8 that is 3-4GB of resident memory.
   In memory-constrained environments (Docker, CI) this can cause OOM kills.
-  Use --max-workers-rss to pause spawning when RSS exceeds a threshold,
-  or pipe prompts via --stdin for container-level orchestration.
+  Use --stdin to pipe prompts for container-level orchestration.
 
 Workspace Isolation:
   Use --workspace-dir to create per-prompt directories.
@@ -514,17 +498,6 @@ Examples:
     concurrency = parsed
   }
 
-  // Validate and parse max-workers-rss (MB → bytes)
-  let maxWorkersRss: number | undefined
-  if (values['max-workers-rss']) {
-    const parsed = Number.parseInt(values['max-workers-rss'], 10)
-    if (Number.isNaN(parsed) || parsed < 1) {
-      console.error('Error: --max-workers-rss must be a positive integer (MB)')
-      process.exit(1)
-    }
-    maxWorkersRss = parsed * 1024 * 1024
-  }
-
   await runCapture({
     promptsPath: promptsPath ?? undefined,
     prompts,
@@ -537,7 +510,6 @@ Examples:
     grader,
     debug: values.debug ?? false,
     concurrency,
-    maxWorkersRss,
     workspaceDir: values['workspace-dir'],
   })
 }

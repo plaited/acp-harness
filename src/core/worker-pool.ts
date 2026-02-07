@@ -35,10 +35,6 @@ export type WorkerPoolOptions<T> = {
   concurrency: number
   /** Progress callback called after each task completes */
   onProgress?: ProgressCallback<T>
-  /** RSS limit in bytes; pauses spawning when process.memoryUsage().rss exceeds this */
-  maxWorkersRss?: number
-  /** Called when spawning is paused due to RSS exceeding limit */
-  onThrottle?: (currentRss: number, limit: number) => void
 }
 
 /**
@@ -85,37 +81,6 @@ export const createWriteMutex = (): WriteMutex => {
 }
 
 // ============================================================================
-// RSS Throttling
-// ============================================================================
-
-/** Polling interval for RSS checks (1 second) */
-const RSS_POLL_INTERVAL_MS = 1000
-
-/**
- * Wait until process RSS drops below the given limit.
- *
- * @remarks
- * Polls `process.memoryUsage().rss` every second. Fires `onThrottle`
- * on the first check that exceeds the limit, then silently waits.
- *
- * @param limit - RSS threshold in bytes
- * @param onThrottle - Optional callback on first throttle
- *
- * @internal
- */
-const waitForRss = async (limit: number, onThrottle?: (currentRss: number, limit: number) => void): Promise<void> => {
-  let rss = process.memoryUsage().rss
-  if (rss <= limit) return
-
-  onThrottle?.(rss, limit)
-
-  while (rss > limit) {
-    await Bun.sleep(RSS_POLL_INTERVAL_MS)
-    rss = process.memoryUsage().rss
-  }
-}
-
-// ============================================================================
 // Worker Pool Implementation
 // ============================================================================
 
@@ -139,7 +104,7 @@ export const runWorkerPool = async <TItem, TResult>(
   worker: (item: TItem, index: number) => Promise<TResult>,
   options: WorkerPoolOptions<TResult>,
 ): Promise<WorkerPoolResult<TResult>> => {
-  const { concurrency, onProgress, maxWorkersRss, onThrottle } = options
+  const { concurrency, onProgress } = options
   const results: TResult[] = []
   const errors: Array<{ index: number; error: Error }> = []
 
@@ -148,11 +113,6 @@ export const runWorkerPool = async <TItem, TResult>(
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (item === undefined) continue
-
-      // Wait for RSS to drop below limit before spawning next worker
-      if (maxWorkersRss) {
-        await waitForRss(maxWorkersRss, onThrottle)
-      }
 
       try {
         const result = await worker(item, i)
@@ -190,11 +150,6 @@ export const runWorkerPool = async <TItem, TResult>(
   const runWorker = async (): Promise<void> => {
     let work = getNextItem()
     while (work) {
-      // Wait for RSS to drop below limit before spawning next worker
-      if (maxWorkersRss) {
-        await waitForRss(maxWorkersRss, onThrottle)
-      }
-
       const { item, index } = work
       try {
         const result = await worker(item, index)
