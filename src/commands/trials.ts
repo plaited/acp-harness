@@ -11,25 +11,13 @@
  * @packageDocumentation
  */
 
-import { mkdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import {
-  createWorkspaceDir,
-  createWriteMutex,
-  extractOutput,
-  extractTrajectory,
-  loadPrompts,
-  logProgress,
-  resolvePath,
-  runWorkerPool,
-  writeOutput,
-} from '../core.ts'
-import { type HeadlessAdapterConfig, parseHeadlessConfig } from '../headless/headless.schemas.ts'
+import { createWorkspaceDir, extractOutput, extractTrajectory, logProgress, readStdinPrompts } from '../core.ts'
 import type { ParsedUpdate } from '../headless/headless-output-parser.ts'
-import { createSessionManager } from '../headless/headless-session-manager.ts'
-import { DEFAULT_HARNESS_TIMEOUT, DEFAULT_TRIAL_COUNT } from '../schemas/constants.ts'
-import { loadGrader } from '../schemas/grader-loader.ts'
-import type { Grader, TrialEntry, TrialResult } from '../schemas.ts'
+import { DEFAULT_TRIAL_COUNT } from '../schemas/constants.ts'
+import { loadGraderOrExit } from '../schemas/grader-loader.ts'
+import type { PromptCase, TrialEntry, TrialResult } from '../schemas.ts'
+import { type BaseExecutionConfig, executePrompts, parseConcurrency, prepareExecution } from './execution.ts'
 
 // ============================================================================
 // Pass@k/Pass^k Calculation
@@ -85,31 +73,9 @@ export const calculatePassExpK = (passes: number, k: number): number => {
 // ============================================================================
 
 /** Configuration for trials command */
-export type TrialsConfig = {
-  /** Path to prompts.jsonl file */
-  promptsPath: string
-  /** Path to agent schema JSON file */
-  schemaPath: string
+export type TrialsConfig = BaseExecutionConfig & {
   /** Number of trials per prompt */
   k: number
-  /** Output file path */
-  outputPath?: string
-  /** Working directory for agent */
-  cwd?: string
-  /** Timeout per prompt in milliseconds (overrides schema default) */
-  timeout?: number
-  /** Show progress to stderr */
-  progress?: boolean
-  /** Append to output file */
-  append?: boolean
-  /** Optional grader function */
-  grader?: Grader
-  /** Enable debug mode */
-  debug?: boolean
-  /** Number of concurrent workers (default: 1 for sequential) */
-  concurrency?: number
-  /** Base directory for per-prompt workspace isolation */
-  workspaceDir?: string
 }
 
 // ============================================================================
@@ -123,53 +89,17 @@ export type TrialsConfig = {
  * @returns Array of trial results
  */
 export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> => {
-  const {
-    promptsPath,
-    schemaPath,
-    k,
-    outputPath,
-    cwd,
-    timeout,
-    progress = false,
-    append = false,
-    grader,
-    debug = false,
-    concurrency = 1,
-    workspaceDir,
-  } = config
-
-  // Load and validate schema
-  const schemaFile = Bun.file(schemaPath)
-  if (!(await schemaFile.exists())) {
-    throw new Error(`Schema file not found: ${schemaPath}`)
-  }
-
-  let schema: HeadlessAdapterConfig
-  try {
-    const rawSchema = await schemaFile.json()
-    schema = parseHeadlessConfig(rawSchema)
-  } catch (error) {
-    throw new Error(`Invalid schema: ${error instanceof Error ? error.message : String(error)}`)
-  }
-
-  // Load prompts
-  const prompts = await loadPrompts(promptsPath)
-
-  // Resolve paths
-  const resolvedOutputPath = outputPath ? resolvePath(outputPath) : undefined
-  const resolvedWorkspaceDir = workspaceDir ? resolvePath(workspaceDir) : undefined
-
-  // Determine effective timeout (CLI flag > schema default > harness default)
-  const schemaTimeout = 'timeout' in schema ? schema.timeout : undefined
-  const effectiveTimeout = timeout ?? schemaTimeout ?? DEFAULT_HARNESS_TIMEOUT
+  const { k } = config
+  const ctx = await prepareExecution(config)
+  const { schema, prompts, sessions, resolvedWorkspaceDir, defaultWorkingDir, progress, grader } = ctx
 
   // Log progress info
-  logProgress(`Loaded ${prompts.length} prompts from ${promptsPath}`, progress)
+  logProgress(`Loaded ${prompts.length} prompts from ${config.promptsPath ?? 'stdin'}`, progress)
   logProgress(`Running ${k} trials per prompt (${prompts.length * k} total executions)`, progress)
-  logProgress(`Schema: ${schema.name} (${schemaPath})`, progress)
-  logProgress(`Timeout: ${effectiveTimeout}ms`, progress)
-  if (concurrency > 1) {
-    logProgress(`Concurrency: ${concurrency} workers`, progress)
+  logProgress(`Schema: ${schema.name} (${config.schemaPath})`, progress)
+  logProgress(`Timeout: ${ctx.effectiveTimeout}ms`, progress)
+  if (ctx.concurrency > 1) {
+    logProgress(`Concurrency: ${ctx.concurrency} workers`, progress)
   }
   if (resolvedWorkspaceDir) {
     logProgress(`Workspace: ${resolvedWorkspaceDir}`, progress)
@@ -177,31 +107,6 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
   if (grader) {
     logProgress('Grader: enabled (will compute pass@k metrics)', progress)
   }
-
-  // Create session manager with schema
-  const sessions = createSessionManager({
-    schema,
-    timeout: effectiveTimeout,
-    verbose: progress,
-    debug,
-  })
-
-  // Clear output file if not appending
-  if (resolvedOutputPath && !append) {
-    await Bun.write(resolvedOutputPath, '')
-  }
-
-  // Create workspace base directory if specified
-  // Uses fs.mkdir instead of shell to prevent command injection
-  if (resolvedWorkspaceDir) {
-    await mkdir(resolvedWorkspaceDir, { recursive: true })
-  }
-
-  const defaultWorkingDir = cwd ?? process.cwd()
-
-  // Create write mutex for coordinating JSONL output
-  const writeMutex = createWriteMutex()
-  let isFirstOutput = true
 
   // Process all trials for a single prompt
   const processPromptTrials = async (promptCase: (typeof prompts)[number], index: number): Promise<TrialResult> => {
@@ -308,11 +213,7 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
     }
 
     // Write result immediately (coordinated via mutex for concurrent writes)
-    await writeMutex.write(async () => {
-      const formatted = JSON.stringify(result)
-      await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
-      isFirstOutput = false
-    })
+    await ctx.writeResult(result)
 
     if (grader) {
       logProgress(
@@ -325,20 +226,7 @@ export const runTrials = async (config: TrialsConfig): Promise<TrialResult[]> =>
   }
 
   // Run with worker pool (parallelizes across prompts, trials for each prompt run sequentially)
-  const { results, errors } = await runWorkerPool(prompts, processPromptTrials, {
-    concurrency,
-    onProgress: (completed, total) => {
-      logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
-    },
-  })
-
-  // Log any errors that occurred
-  if (errors.length > 0) {
-    logProgress(`Completed with ${errors.length} error(s)`, progress)
-  }
-
-  logProgress('Done!', progress)
-  return results
+  return executePrompts(ctx, processPromptTrials)
 }
 
 // ============================================================================
@@ -363,6 +251,7 @@ export const trials = async (args: string[]): Promise<void> => {
       append: { type: 'boolean', default: false },
       grader: { type: 'string', short: 'g' },
       debug: { type: 'boolean', default: false },
+      stdin: { type: 'boolean', default: false },
       concurrency: { type: 'string', short: 'j' },
       'workspace-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -373,6 +262,7 @@ export const trials = async (args: string[]): Promise<void> => {
   if (values.help) {
     console.log(`
 Usage: agent-eval-harness trials <prompts.jsonl> --schema <schema.json> [options]
+       cat prompts.jsonl | agent-eval-harness trials --stdin --schema <schema.json> [options]
 
 Arguments:
   prompts.jsonl     Input file with evaluation prompts
@@ -384,6 +274,7 @@ Options:
   -c, --cwd         Working directory for agent
   -t, --timeout     Request timeout in ms (overrides schema default)
   -j, --concurrency Number of concurrent workers (default: 1)
+  --stdin           Read prompts from stdin (mutually exclusive with file arg)
   --workspace-dir   Base directory for per-trial workspace isolation
   --progress        Show progress to stderr
   --append          Append to output file
@@ -404,6 +295,11 @@ Parallelization:
   Each prompt's k trials still run sequentially (required for aggregation).
   With 151 prompts and -j 4, you get 4 prompts running trials concurrently.
 
+  Memory: Stream-mode agents (e.g. Claude Code) spawn real subprocesses
+  at ~400-500MB RSS each. With -j 8 that is 3-4GB of resident memory.
+  In memory-constrained environments (Docker, CI) this can cause OOM kills.
+  Use --stdin to pipe prompts for container-level orchestration.
+
 Workspace Isolation:
   Use --workspace-dir to create per-trial directories.
   Each trial runs in {workspace-dir}/prompt-{id}-trial-{n}/.
@@ -422,13 +318,24 @@ Examples:
 
   # With TypeScript grader
   agent-eval-harness trials prompts.jsonl -s claude.json -k 5 --grader ./grader.ts -o trials.jsonl
+
+  # Read prompts from stdin (container orchestration)
+  cat prompts.jsonl | agent-eval-harness trials --stdin -s claude.json -k 5 -o trials.jsonl
 `)
     return
   }
 
   const promptsPath = positionals[0]
-  if (!promptsPath) {
-    console.error('Error: prompts.jsonl path is required')
+  const useStdin = values.stdin ?? false
+
+  // Mutual exclusivity: --stdin and positional file
+  if (useStdin && promptsPath) {
+    console.error('Error: --stdin and prompts file argument are mutually exclusive')
+    process.exit(1)
+  }
+
+  if (!useStdin && !promptsPath) {
+    console.error('Error: prompts.jsonl path is required (or use --stdin)')
     process.exit(1)
   }
 
@@ -438,30 +345,23 @@ Examples:
     process.exit(1)
   }
 
-  // Load grader if specified
-  let grader: Grader | undefined
-  if (values.grader) {
-    try {
-      grader = await loadGrader(values.grader)
-    } catch (error) {
-      console.error(`Error: ${error instanceof Error ? error.message : error}`)
+  // Read prompts from stdin if requested
+  let prompts: PromptCase[] | undefined
+  if (useStdin) {
+    const stdinPrompts = await readStdinPrompts()
+    if (!stdinPrompts || stdinPrompts.length === 0) {
+      console.error('Error: no prompts received on stdin')
       process.exit(1)
     }
+    prompts = stdinPrompts
   }
 
-  // Validate and parse concurrency
-  let concurrency = 1
-  if (values.concurrency) {
-    const parsed = Number.parseInt(values.concurrency, 10)
-    if (Number.isNaN(parsed) || parsed < 1) {
-      console.error('Error: --concurrency must be a positive integer')
-      process.exit(1)
-    }
-    concurrency = parsed
-  }
+  // Load grader if specified
+  const grader = values.grader ? await loadGraderOrExit(values.grader) : undefined
 
   await runTrials({
-    promptsPath,
+    promptsPath: promptsPath ?? undefined,
+    prompts,
     schemaPath: values.schema,
     k: Number.parseInt(values.k ?? String(DEFAULT_TRIAL_COUNT), 10),
     outputPath: values.output,
@@ -471,7 +371,7 @@ Examples:
     append: values.append ?? false,
     grader,
     debug: values.debug ?? false,
-    concurrency,
+    concurrency: parseConcurrency(values.concurrency),
     workspaceDir: values['workspace-dir'],
   })
 }

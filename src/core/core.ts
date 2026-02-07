@@ -11,7 +11,15 @@
  */
 
 // Loading utilities
-export { buildResultsIndex, countLines, loadJsonl, loadPrompts, loadResults, streamResults } from './loading.ts'
+export {
+  buildResultsIndex,
+  countLines,
+  loadJsonl,
+  loadPrompts,
+  loadResults,
+  readStdinPrompts,
+  streamResults,
+} from './loading.ts'
 // Output utilities
 export { getInputPreview, headTailPreview, logProgress, resolvePath, writeOutput } from './output.ts'
 // Native streaming utilities

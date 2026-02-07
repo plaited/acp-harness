@@ -40,6 +40,44 @@ export const loadPrompts = async (path: string): Promise<PromptCase[]> => {
 }
 
 /**
+ * Read prompts from stdin as JSONL.
+ *
+ * @remarks
+ * Reads all data from stdin, parses each line as JSON, and validates against
+ * PromptCaseSchema. Returns null when stdin is a TTY (no piped input).
+ * Uses chunked Buffer reads matching the pattern in pipeline/run.ts.
+ *
+ * @returns Parsed and validated prompt cases, or null if stdin is a TTY
+ * @throws Error if any line is invalid JSON or fails schema validation
+ *
+ * @public
+ */
+export const readStdinPrompts = async (): Promise<PromptCase[] | null> => {
+  if (process.stdin.isTTY) {
+    return null
+  }
+
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk)
+  }
+
+  const content = Buffer.concat(chunks).toString('utf-8').trim()
+  if (!content) return null
+
+  return content
+    .split('\n')
+    .filter(Boolean)
+    .map((line, index) => {
+      try {
+        return PromptCaseSchema.parse(JSON.parse(line))
+      } catch (error) {
+        throw new Error(`Invalid stdin prompt at line ${index + 1}: ${error instanceof Error ? error.message : error}`)
+      }
+    })
+}
+
+/**
  * Load capture results from a JSONL file.
  *
  * @remarks

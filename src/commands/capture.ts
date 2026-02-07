@@ -11,28 +11,22 @@
  * @packageDocumentation
  */
 
-import { mkdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import {
   createWorkspaceDir,
-  createWriteMutex,
   detectTrajectoryRichness,
   extractOutput,
   extractTrajectory,
   getInputPreview,
   hasToolErrors,
-  loadPrompts,
   logProgress,
-  resolvePath,
-  runWorkerPool,
-  writeOutput,
+  readStdinPrompts,
 } from '../core.ts'
-import { type HeadlessAdapterConfig, parseHeadlessConfig } from '../headless/headless.schemas.ts'
 import type { ParsedUpdate } from '../headless/headless-output-parser.ts'
-import { createSessionManager, type ProcessExitInfo, type PromptResult } from '../headless/headless-session-manager.ts'
-import { DEFAULT_HARNESS_TIMEOUT } from '../schemas/constants.ts'
-import { loadGrader } from '../schemas/grader-loader.ts'
-import type { CaptureResult, Grader, TrajectoryRichness } from '../schemas.ts'
+import type { ProcessExitInfo, PromptResult } from '../headless/headless-session-manager.ts'
+import { loadGraderOrExit } from '../schemas/grader-loader.ts'
+import type { CaptureResult, PromptCase, TrajectoryRichness } from '../schemas.ts'
+import { type BaseExecutionConfig, executePrompts, parseConcurrency, prepareExecution } from './execution.ts'
 
 // ============================================================================
 // Re-exports for backward compatibility
@@ -55,30 +49,7 @@ export {
 // ============================================================================
 
 /** Configuration for capture command */
-export type CaptureConfig = {
-  /** Path to prompts.jsonl file */
-  promptsPath: string
-  /** Path to agent schema JSON file */
-  schemaPath: string
-  /** Output file path (undefined for stdout) */
-  outputPath?: string
-  /** Working directory for agent */
-  cwd?: string
-  /** Timeout per prompt in milliseconds (overrides schema default) */
-  timeout?: number
-  /** Show progress to stderr */
-  progress?: boolean
-  /** Append to output file instead of overwriting */
-  append?: boolean
-  /** Optional grader function */
-  grader?: Grader
-  /** Enable debug mode for detailed output */
-  debug?: boolean
-  /** Number of concurrent workers (default: 1 for sequential) */
-  concurrency?: number
-  /** Base directory for per-prompt workspace isolation */
-  workspaceDir?: string
-}
+export type CaptureConfig = BaseExecutionConfig
 
 // ============================================================================
 // Capture Implementation
@@ -95,51 +66,25 @@ export type CaptureConfig = {
  * @returns Array of capture results
  */
 export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]> => {
+  const ctx = await prepareExecution(config)
   const {
-    promptsPath,
-    schemaPath,
-    outputPath,
-    cwd,
-    timeout,
-    progress = false,
-    append = false,
+    schema,
+    prompts,
+    sessions,
+    resolvedOutputPath,
+    resolvedWorkspaceDir,
+    defaultWorkingDir,
+    progress,
     grader,
-    debug = false,
-    concurrency = 1,
-    workspaceDir,
-  } = config
-
-  // Load and validate schema
-  const schemaFile = Bun.file(schemaPath)
-  if (!(await schemaFile.exists())) {
-    throw new Error(`Schema file not found: ${schemaPath}`)
-  }
-
-  let schema: HeadlessAdapterConfig
-  try {
-    const rawSchema = await schemaFile.json()
-    schema = parseHeadlessConfig(rawSchema)
-  } catch (error) {
-    throw new Error(`Invalid schema: ${error instanceof Error ? error.message : String(error)}`)
-  }
-
-  // Load prompts
-  const prompts = await loadPrompts(promptsPath)
-
-  // Resolve paths
-  const resolvedOutputPath = outputPath ? resolvePath(outputPath) : undefined
-  const resolvedWorkspaceDir = workspaceDir ? resolvePath(workspaceDir) : undefined
-
-  // Determine effective timeout (CLI flag > schema default > harness default)
-  const schemaTimeout = 'timeout' in schema ? schema.timeout : undefined
-  const effectiveTimeout = timeout ?? schemaTimeout ?? DEFAULT_HARNESS_TIMEOUT
+    debug,
+  } = ctx
 
   // Log progress info
-  logProgress(`Loaded ${prompts.length} prompts from ${promptsPath}`, progress)
-  logProgress(`Schema: ${schema.name} (${schemaPath})`, progress)
-  logProgress(`Timeout: ${effectiveTimeout}ms`, progress)
-  if (concurrency > 1) {
-    logProgress(`Concurrency: ${concurrency} workers`, progress)
+  logProgress(`Loaded ${prompts.length} prompts from ${config.promptsPath ?? 'stdin'}`, progress)
+  logProgress(`Schema: ${schema.name} (${config.schemaPath})`, progress)
+  logProgress(`Timeout: ${ctx.effectiveTimeout}ms`, progress)
+  if (ctx.concurrency > 1) {
+    logProgress(`Concurrency: ${ctx.concurrency} workers`, progress)
   }
   if (resolvedWorkspaceDir) {
     logProgress(`Workspace: ${resolvedWorkspaceDir}`, progress)
@@ -150,31 +95,6 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   if (debug) {
     logProgress(`Debug mode: enabled`, progress)
   }
-
-  // Create session manager with schema
-  const sessions = createSessionManager({
-    schema,
-    timeout: effectiveTimeout,
-    verbose: progress,
-    debug,
-  })
-
-  // Clear output file if not appending
-  if (resolvedOutputPath && !append) {
-    await Bun.write(resolvedOutputPath, '')
-  }
-
-  // Create workspace base directory if specified
-  // Uses fs.mkdir instead of shell to prevent command injection
-  if (resolvedWorkspaceDir) {
-    await mkdir(resolvedWorkspaceDir, { recursive: true })
-  }
-
-  const defaultWorkingDir = cwd ?? process.cwd()
-
-  // Create write mutex for coordinating JSONL output
-  const writeMutex = createWriteMutex()
-  let isFirstOutput = true
 
   // Process a single prompt (used by worker pool)
   const processPrompt = async (promptCase: (typeof prompts)[number], index: number): Promise<CaptureResult> => {
@@ -301,11 +221,7 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
     }
 
     // Write result immediately (coordinated via mutex for concurrent writes)
-    await writeMutex.write(async () => {
-      const formatted = JSON.stringify(result)
-      await writeOutput(formatted, resolvedOutputPath, !isFirstOutput)
-      isFirstOutput = false
-    })
+    await ctx.writeResult(result)
 
     const statusIcon = result.toolErrors ? '!' : '✓'
     const exitInfo = result.metadata?.timedOut
@@ -319,20 +235,7 @@ export const runCapture = async (config: CaptureConfig): Promise<CaptureResult[]
   }
 
   // Run with worker pool
-  const { results, errors } = await runWorkerPool(prompts, processPrompt, {
-    concurrency,
-    onProgress: (completed, total) => {
-      logProgress(`Progress: ${completed}/${total} prompts completed`, progress)
-    },
-  })
-
-  // Log any errors that occurred
-  if (errors.length > 0) {
-    logProgress(`Completed with ${errors.length} error(s)`, progress)
-  }
-
-  logProgress('Done!', progress)
-  return results
+  return executePrompts(ctx, processPrompt)
 }
 
 // ============================================================================
@@ -356,6 +259,7 @@ export const capture = async (args: string[]): Promise<void> => {
       append: { type: 'boolean', default: false },
       grader: { type: 'string', short: 'g' },
       debug: { type: 'boolean', default: false },
+      stdin: { type: 'boolean', default: false },
       concurrency: { type: 'string', short: 'j' },
       'workspace-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -366,6 +270,7 @@ export const capture = async (args: string[]): Promise<void> => {
   if (values.help) {
     console.log(`
 Usage: agent-eval-harness capture <prompts.jsonl> --schema <schema.json> [options]
+       cat prompts.jsonl | agent-eval-harness capture --stdin --schema <schema.json> [options]
 
 Arguments:
   prompts.jsonl     Input file with evaluation prompts
@@ -376,6 +281,7 @@ Options:
   -c, --cwd         Working directory for agent
   -t, --timeout     Request timeout in ms (overrides schema default)
   -j, --concurrency Number of concurrent workers (default: 1)
+  --stdin           Read prompts from stdin (mutually exclusive with file arg)
   --workspace-dir   Base directory for per-prompt workspace isolation
   --progress        Show progress to stderr
   --append          Append to output file instead of overwriting
@@ -401,6 +307,11 @@ Parallelization:
   Each prompt gets its own agent session for isolation.
   Results are written as they complete (order may differ from input).
 
+  Memory: Stream-mode agents (e.g. Claude Code) spawn real subprocesses
+  at ~400-500MB RSS each. With -j 8 that is 3-4GB of resident memory.
+  In memory-constrained environments (Docker, CI) this can cause OOM kills.
+  Use --stdin to pipe prompts for container-level orchestration.
+
 Workspace Isolation:
   Use --workspace-dir to create per-prompt directories.
   Each prompt runs in {workspace-dir}/prompt-{id}/.
@@ -422,13 +333,24 @@ Examples:
 
   # With debug mode
   agent-eval-harness capture prompts.jsonl -s claude.json --debug -o results.jsonl
+
+  # Read prompts from stdin (container orchestration)
+  cat prompts.jsonl | agent-eval-harness capture --stdin -s claude.json -o results.jsonl
 `)
     return
   }
 
   const promptsPath = positionals[0]
-  if (!promptsPath) {
-    console.error('Error: prompts.jsonl path is required')
+  const useStdin = values.stdin ?? false
+
+  // Mutual exclusivity: --stdin and positional file
+  if (useStdin && promptsPath) {
+    console.error('Error: --stdin and prompts file argument are mutually exclusive')
+    process.exit(1)
+  }
+
+  if (!useStdin && !promptsPath) {
+    console.error('Error: prompts.jsonl path is required (or use --stdin)')
     process.exit(1)
   }
 
@@ -438,30 +360,23 @@ Examples:
     process.exit(1)
   }
 
-  // Load grader if specified
-  let grader: Grader | undefined
-  if (values.grader) {
-    try {
-      grader = await loadGrader(values.grader)
-    } catch (error) {
-      console.error(`Error: ${error instanceof Error ? error.message : error}`)
+  // Read prompts from stdin if requested
+  let prompts: PromptCase[] | undefined
+  if (useStdin) {
+    const stdinPrompts = await readStdinPrompts()
+    if (!stdinPrompts || stdinPrompts.length === 0) {
+      console.error('Error: no prompts received on stdin')
       process.exit(1)
     }
+    prompts = stdinPrompts
   }
 
-  // Validate and parse concurrency
-  let concurrency = 1
-  if (values.concurrency) {
-    const parsed = Number.parseInt(values.concurrency, 10)
-    if (Number.isNaN(parsed) || parsed < 1) {
-      console.error('Error: --concurrency must be a positive integer')
-      process.exit(1)
-    }
-    concurrency = parsed
-  }
+  // Load grader if specified
+  const grader = values.grader ? await loadGraderOrExit(values.grader) : undefined
 
   await runCapture({
-    promptsPath,
+    promptsPath: promptsPath ?? undefined,
+    prompts,
     schemaPath: values.schema,
     outputPath: values.output,
     cwd: values.cwd,
@@ -470,7 +385,7 @@ Examples:
     append: values.append ?? false,
     grader,
     debug: values.debug ?? false,
-    concurrency,
+    concurrency: parseConcurrency(values.concurrency),
     workspaceDir: values['workspace-dir'],
   })
 }
