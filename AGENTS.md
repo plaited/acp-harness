@@ -44,15 +44,6 @@ ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... \
   docker compose -f docker-compose.test.yml run --rm test
 ```
 
-## Quick Start
-
-```bash
-export ANTHROPIC_API_KEY=sk-...
-bunx @plaited/agent-eval-harness capture prompts.jsonl \
-  --schema .claude/skills/headless-adapters/schemas/claude-headless.json \
-  -o results.jsonl
-```
-
 ## Skills
 
 | Skill | Commands | Use Case |
