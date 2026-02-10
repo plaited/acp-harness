@@ -235,30 +235,46 @@ const computeFlakinessMetrics = (results: TrialResult[], maxTopFlaky: number = 1
   }
 }
 
+/** Result from quality metrics computation, including raw scores for CI reuse */
+type QualityComputeResult = {
+  metrics: TrialsQualityMetrics
+  rawScores: number[]
+}
+
 /**
  * Compute quality metrics from trial results.
  *
  * @remarks
  * Flattens all trial scores across all prompts into a single distribution.
  * Returns undefined if no scores are present (no grader was used).
+ * Returns raw scores alongside metrics to avoid re-traversal for CI computation.
  *
  * @param results - Array of trial results
- * @returns Quality metrics or undefined if no scores
+ * @returns Quality metrics with raw scores, or undefined if no scores
  */
-const computeTrialsQualityMetrics = (results: TrialResult[]): TrialsQualityMetrics | undefined => {
-  const scores = results.flatMap((r) => r.trials.filter((t) => t.score !== undefined).map((t) => t.score as number))
+const computeTrialsQualityMetrics = (results: TrialResult[]): QualityComputeResult | undefined => {
+  const rawScores = results.flatMap((r) => r.trials.filter((t) => t.score !== undefined).map((t) => t.score as number))
 
-  if (scores.length === 0) return undefined
+  if (rawScores.length === 0) return undefined
 
-  const sorted = [...scores].sort((a, b) => a - b)
-  const sum = scores.reduce((a, b) => a + b, 0)
+  const sorted = [...rawScores].sort((a, b) => a - b)
+  const sum = rawScores.reduce((a, b) => a + b, 0)
 
   return {
-    avgScore: sum / scores.length,
-    medianScore: percentile(sorted, 0.5),
-    p25Score: percentile(sorted, 0.25),
-    p75Score: percentile(sorted, 0.75),
+    metrics: {
+      avgScore: sum / rawScores.length,
+      medianScore: percentile(sorted, 0.5),
+      p25Score: percentile(sorted, 0.25),
+      p75Score: percentile(sorted, 0.75),
+    },
+    rawScores,
   }
+}
+
+/** Result from performance metrics computation, including raw durations for CI reuse */
+type PerformanceComputeResult = {
+  metrics: TrialsPerformanceMetrics
+  rawDurations: number[]
 }
 
 /**
@@ -267,16 +283,20 @@ const computeTrialsQualityMetrics = (results: TrialResult[]): TrialsQualityMetri
  * @remarks
  * Flattens all trial durations across all prompts into latency statistics.
  * Always returns a value since TrialEntry.duration is required.
+ * Returns raw durations alongside metrics to avoid re-traversal for CI computation.
  *
  * @param results - Array of trial results
- * @returns Performance metrics
+ * @returns Performance metrics with raw durations
  */
-const computeTrialsPerformanceMetrics = (results: TrialResult[]): TrialsPerformanceMetrics => {
-  const durations = results.flatMap((r) => r.trials.map((t) => t.duration))
+const computeTrialsPerformanceMetrics = (results: TrialResult[]): PerformanceComputeResult => {
+  const rawDurations = results.flatMap((r) => r.trials.map((t) => t.duration))
 
   return {
-    latency: computeLatencyStats(durations),
-    totalDuration: durations.reduce((a, b) => a + b, 0),
+    metrics: {
+      latency: computeLatencyStats(rawDurations),
+      totalDuration: rawDurations.reduce((a, b) => a + b, 0),
+    },
+    rawDurations,
   }
 }
 
@@ -436,6 +456,8 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
   const flakiness: Record<string, TrialsFlakinessMetrics> = {}
   const quality: Record<string, TrialsQualityMetrics> = {}
   const performance: Record<string, TrialsPerformanceMetrics> = {}
+  const rawScoresByRun: Record<string, number[]> = {}
+  const rawDurationsByRun: Record<string, number[]> = {}
 
   let hasQuality = false
 
@@ -446,11 +468,15 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
     capability[label] = computeCapabilityMetrics(results)
     reliability[label] = computeReliabilityMetrics(results)
     flakiness[label] = computeFlakinessMetrics(results)
-    performance[label] = computeTrialsPerformanceMetrics(results)
 
-    const qualityMetrics = computeTrialsQualityMetrics(results)
-    if (qualityMetrics) {
-      quality[label] = qualityMetrics
+    const perfResult = computeTrialsPerformanceMetrics(results)
+    performance[label] = perfResult.metrics
+    rawDurationsByRun[label] = perfResult.rawDurations
+
+    const qualityResult = computeTrialsQualityMetrics(results)
+    if (qualityResult) {
+      quality[label] = qualityResult.metrics
+      rawScoresByRun[label] = qualityResult.rawScores
       hasQuality = true
     }
   }
@@ -461,9 +487,9 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
 
     for (const label of runLabels) {
       const resultsMap = runResults[label] ?? new Map()
-      const results = [...resultsMap.values()]
-      const passAtKValues = results.map((r) => r.passAtK ?? 0)
-      const passExpKValues = results.map((r) => r.passExpK ?? 0)
+      const resultsArr = [...resultsMap.values()]
+      const passAtKValues = resultsArr.map((r) => r.passAtK ?? 0)
+      const passExpKValues = resultsArr.map((r) => r.passExpK ?? 0)
 
       // Capability CIs
       const capabilityMetrics = capability[label]
@@ -483,33 +509,19 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
 
       // Quality CIs (only when scores present)
       const qualityMetrics = quality[label]
-      if (qualityMetrics) {
-        const scores: number[] = []
-        for (const r of results) {
-          for (const t of r.trials) {
-            if (t.score !== undefined) scores.push(t.score)
-          }
-        }
-        if (scores.length > 0) {
-          qualityMetrics.confidenceIntervals = {
-            avgScore: bootstrap(scores, bootstrapConfig).ci,
-          }
+      const scores = rawScoresByRun[label]
+      if (qualityMetrics && scores && scores.length > 0) {
+        qualityMetrics.confidenceIntervals = {
+          avgScore: bootstrap(scores, bootstrapConfig).ci,
         }
       }
 
       // Performance CIs
       const performanceMetrics = performance[label]
-      if (performanceMetrics) {
-        const durations: number[] = []
-        for (const r of results) {
-          for (const t of r.trials) {
-            durations.push(t.duration)
-          }
-        }
-        if (durations.length > 0) {
-          performanceMetrics.confidenceIntervals = {
-            latencyMean: bootstrap(durations, bootstrapConfig).ci,
-          }
+      const durations = rawDurationsByRun[label]
+      if (performanceMetrics && durations && durations.length > 0) {
+        performanceMetrics.confidenceIntervals = {
+          latencyMean: bootstrap(durations, bootstrapConfig).ci,
         }
       }
     }
@@ -583,7 +595,7 @@ export const runTrialsCompare = async (config: TrialsCompareConfig): Promise<Tri
     capability,
     reliability,
     flakiness,
-    ...(hasQuality && { quality }),
+    quality: hasQuality ? quality : undefined,
     performance,
     headToHead: {
       capability: capabilityPairwise,

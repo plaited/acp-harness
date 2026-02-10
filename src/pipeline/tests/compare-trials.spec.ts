@@ -14,33 +14,23 @@ import { buildTrialsIndex, runTrialsCompare } from '../compare-trials.ts'
 // Test Fixtures
 // ============================================================================
 
-const createTrialResult = (id: string, passAtK: number, passExpK: number, k: number = 3) => ({
+const createTrialResult = (
+  id: string,
+  passAtK: number,
+  passExpK: number,
+  k: number = 3,
+  includeScores: boolean = true,
+) => ({
   id,
   input: `Prompt for ${id}`,
   k,
-  passRate: passAtK,
-  passAtK,
-  passExpK,
+  ...(includeScores && { passRate: passAtK, passAtK, passExpK }),
   trials: Array.from({ length: k }, (_, i) => ({
     trialNum: i + 1,
     output: `Output ${i + 1}`,
     trajectory: [],
     duration: 100 + i * 10,
-    pass: Math.random() < passAtK,
-    score: passAtK,
-  })),
-})
-
-/** Create trial result without grader scores (no score/pass fields on trials) */
-const createTrialResultWithoutScores = (id: string, k: number = 3) => ({
-  id,
-  input: `Prompt for ${id}`,
-  k,
-  trials: Array.from({ length: k }, (_, i) => ({
-    trialNum: i + 1,
-    output: `Output ${i + 1}`,
-    trajectory: [],
-    duration: 200 + i * 50,
+    ...(includeScores && { pass: Math.random() < passAtK, score: passAtK }),
   })),
 })
 
@@ -497,9 +487,9 @@ describe('runTrialsCompare', () => {
     const run1Path = `${tempDir}/noqual-run1.jsonl`
     const run2Path = `${tempDir}/noqual-run2.jsonl`
 
-    // Create trials without scores
-    const trial1 = createTrialResultWithoutScores('test-001')
-    const trial2 = createTrialResultWithoutScores('test-001')
+    // Create trials without scores (includeScores=false)
+    const trial1 = createTrialResult('test-001', 0, 0, 3, false)
+    const trial2 = createTrialResult('test-001', 0, 0, 3, false)
 
     await Bun.write(run1Path, JSON.stringify(trial1))
     await Bun.write(run2Path, JSON.stringify(trial2))

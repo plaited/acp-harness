@@ -11,7 +11,12 @@
 import type { LatencyStats, ScoreDistribution } from '../schemas.ts'
 
 /**
- * Compute percentile from sorted array.
+ * Compute percentile from sorted array using nearest rank method.
+ *
+ * @remarks
+ * Uses floor indexing (nearest rank method). For an array of length N,
+ * returns the element at index `floor(N * p)`, clamped to the last element.
+ * This does not interpolate between ranks.
  *
  * @param sorted - Sorted array of numbers
  * @param p - Percentile (0-1)
