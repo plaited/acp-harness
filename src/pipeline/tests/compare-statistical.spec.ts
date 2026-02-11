@@ -105,6 +105,10 @@ describe('runCompare statistical strategy', () => {
     // Verify reliability metrics include type discriminator
     expect(report.reliability.high?.type).toBe('run')
     expect(report.reliability.low?.type).toBe('run')
+
+    // Verify quality metrics include type discriminator
+    expect(report.quality.high?.type).toBe('run')
+    expect(report.quality.low?.type).toBe('run')
   })
 
   test('computes confidence intervals for performance metrics', async () => {

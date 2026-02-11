@@ -365,6 +365,7 @@ export const runCompare = async (config: ExtendedCompareConfig): Promise<Compari
     const fails = results.length - passes
 
     quality[label] = {
+      type: 'run',
       avgScore: scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0,
       passRate: results.length > 0 ? passes / results.length : 0,
       passCount: passes,

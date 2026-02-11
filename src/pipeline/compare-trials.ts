@@ -262,6 +262,7 @@ const computeTrialsQualityMetrics = (results: TrialResult[]): QualityComputeResu
 
   return {
     metrics: {
+      type: 'trial',
       avgScore: sum / rawScores.length,
       medianScore: percentile(sorted, 0.5),
       p25Score: percentile(sorted, 0.25),
