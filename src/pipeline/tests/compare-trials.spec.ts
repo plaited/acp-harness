@@ -477,6 +477,7 @@ describe('runTrialsCompare', () => {
     expect(report.quality?.run1).toBeDefined()
 
     const qual = report.quality?.run1
+    expect(qual?.type).toBe('trial')
     expect(qual?.avgScore).toBeGreaterThan(0)
     expect(qual?.medianScore).toBeGreaterThan(0)
     expect(qual?.p25Score).toBeDefined()

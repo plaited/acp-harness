@@ -620,6 +620,8 @@ export type QualityConfidenceIntervals = z.infer<typeof QualityConfidenceInterva
  * Quality metrics for a single run in comparison.
  */
 export const QualityMetricsSchema = z.object({
+  /** Discriminator for run-level quality metrics */
+  type: z.literal('run'),
   /** Mean grader score (0-1) */
   avgScore: z.number(),
   /** Percentage of pass=true results */
@@ -942,6 +944,8 @@ export type TrialsQualityConfidenceIntervals = z.infer<typeof TrialsQualityConfi
  * Only present when a grader was used during trials capture.
  */
 export const TrialsQualityMetricsSchema = z.object({
+  /** Discriminator for trial-level quality metrics */
+  type: z.literal('trial'),
   /** Average score across all trials */
   avgScore: z.number(),
   /** Median score */
