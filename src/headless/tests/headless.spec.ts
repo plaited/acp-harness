@@ -146,7 +146,7 @@ describe('HeadlessAdapterSchema', () => {
         const extract = result.data.outputEvents![0]!.extract!
         expect(extract.title).toBe('$.name')
         expect(extract.input).toBe('$.input')
-        // Extra fields preserved by catchall
+        // Catchall fields aren't in the inferred type — cast needed to access them
         expect((extract as Record<string, string>).toolName).toBe('$.name')
         expect((extract as Record<string, string>).mcpServer).toBe('$.server')
       }
@@ -757,6 +757,15 @@ describe('passthrough mode', () => {
     const singleResult = Array.isArray(result) ? result[0] : result
     expect(singleResult?.timestamp).toBeGreaterThanOrEqual(before)
     expect(singleResult?.timestamp).toBeLessThanOrEqual(after)
+  })
+
+  test('handles absent input/output fields gracefully', () => {
+    const line = JSON.stringify({ type: 'tool_use', name: 'Bash', status: 'pending' })
+    const result = passthroughParser.parseLine(line)
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.type).toBe('tool_call')
+    expect(singleResult?.input).toBeUndefined()
+    expect(singleResult?.output).toBeUndefined()
   })
 })
 

@@ -55,6 +55,8 @@ export const extractTrajectory = (updates: ParsedUpdate[], startTime: number): T
         if (update.output !== undefined) {
           existing.step.output = update.output
         }
+        // Remove from map so a subsequent call with the same name starts fresh
+        toolCallMap.delete(toolCallId)
       } else if (!existing) {
         // New tool call
         const step: TrajectoryStep & { type: 'tool_call' } = {

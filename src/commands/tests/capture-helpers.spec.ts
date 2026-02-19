@@ -286,6 +286,61 @@ describe('extractTrajectory', () => {
       expect(step.duration).toBe(300)
     }
   })
+
+  test('handles sequential same-named tool calls independently', () => {
+    const updates: ParsedUpdate[] = [
+      // First Read: pending → completed
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/a.ts' },
+        timestamp: 100,
+        raw: {},
+      },
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'completed',
+        output: 'contents of a.ts',
+        timestamp: 300,
+        raw: {},
+      },
+      // Second Read: pending → completed (same tool name, different args)
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/b.ts' },
+        timestamp: 500,
+        raw: {},
+      },
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'completed',
+        output: 'contents of b.ts',
+        timestamp: 700,
+        raw: {},
+      },
+    ]
+
+    const trajectory = extractTrajectory(updates, baseTime)
+
+    // Both calls should appear as separate trajectory steps
+    const toolCalls = trajectory.filter((s) => s.type === 'tool_call')
+    expect(toolCalls).toHaveLength(2)
+
+    const first = toolCalls[0]!
+    expect(first.type === 'tool_call' && first.input).toEqual({ file_path: '/src/a.ts' })
+    expect(first.type === 'tool_call' && first.output).toBe('contents of a.ts')
+    expect(first.type === 'tool_call' && first.status).toBe('completed')
+
+    const second = toolCalls[1]!
+    expect(second.type === 'tool_call' && second.input).toEqual({ file_path: '/src/b.ts' })
+    expect(second.type === 'tool_call' && second.output).toBe('contents of b.ts')
+    expect(second.type === 'tool_call' && second.status).toBe('completed')
+  })
 })
 
 // ============================================================================
