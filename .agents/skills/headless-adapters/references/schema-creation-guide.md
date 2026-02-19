@@ -84,29 +84,68 @@ Analyze the output to create event mappings:
 | JSON Event | Event Type | Extract Fields |
 |------------|---------------|----------------|
 | `{"type": "message", ...}` | `message` | `$.content` |
-| `{"type": "tool_use", ...}` | `tool_call` | `$.name` (title), `"pending"` (status) |
-| `{"type": "tool_result", ...}` | `tool_call` | `$.name` (title), `"completed"` (status) |
+| `{"type": "tool_use", ...}` | `tool_call` | `$.name` (title), `"pending"` (status), `$.input` (input) |
+| `{"type": "tool_result", ...}` | `tool_call` | `$.name` (title), `"completed"` (status), `$.content` (output) |
 | `{"type": "result", ...}` | result detection | `$.content` |
 
-**JSONPath syntax:**
+**Supported JSONPath syntax:**
 
 | Pattern | Description |
 |---------|-------------|
 | `$.field` | Top-level field |
 | `$.nested.field` | Nested field access |
 | `$.array[0].field` | Array index access |
+| `$.array[*]` | Array wildcard (iterate all items) |
+| `$.array[*].field` | Array wildcard with field access |
 | `'literal'` | Static string value |
+
+**Unsupported JSONPath syntax** (silently returns `undefined`):
+
+| Pattern | Issue | Use Instead |
+|---------|-------|-------------|
+| `$.array[?(@.type=='x')]` | Filter expressions not supported | Wildcard match `[*]` + item-relative extract |
+| `$..field` | Recursive descent not supported | Explicit path to field |
+| `$.array[0,1]` | Multi-index not supported | Separate mappings or `[*]` |
+
+#### Extract Fields Reference
+
+The `extract` object maps JSONPath expressions to `ParsedUpdate` fields. These five fields are consumed by the output parser:
+
+| Field | Type Coercion | Purpose | Used By |
+|-------|---------------|---------|---------|
+| `content` | `→ string` | Main text content | message, thought |
+| `title` | `→ string` | Tool name / identifier | tool_call |
+| `status` | `→ string` | Tool status (`'pending'`, `'completed'`) | tool_call |
+| `input` | preserved as object | Tool input arguments | tool_call |
+| `output` | preserved as object | Tool result content | tool_call (on completion) |
+
+**Key difference:** `input` and `output` preserve native types (objects, arrays, strings) for downstream grader inspection. The other three fields coerce values to strings.
+
+Additional string-valued fields (e.g., `toolName`, `mcpServer`) are allowed and preserved during schema validation but are not consumed by the parser.
+
+#### Array Wildcard Matching
+
+When tool events are nested in arrays, use `[*]` in the **match** path. Extract paths are then **relative to the matched item**, not the root event:
+
+```json
+{
+  "match": { "path": "$.message.content[*].type", "value": "tool_use" },
+  "emitAs": "tool_call",
+  "extract": {
+    "title": "$.name",
+    "input": "$.input"
+  }
+}
+```
+
+Given `{"message": {"content": [{"type": "tool_use", "name": "Read", "input": {...}}]}}`:
+- Match iterates `content[]`, finds item with `type == "tool_use"`
+- Extract evaluates `$.name` against that **item** → `"Read"`
+- Extract evaluates `$.input` against that **item** → `{...}` (preserved as object)
 
 ### Step 5: Create Schema File
 
-Use an existing schema as a template:
-
-```bash
-# Copy from tested schema
-cp .claude/skills/headless-adapters/schemas/claude-headless.json ./my-agent-headless.json
-```
-
-Modify for your agent:
+Create a new schema file for your agent using the template below. Adapt the command, flags, and JSONPath patterns to match your CLI's output:
 
 ```json
 {
@@ -128,12 +167,12 @@ Modify for your agent:
     {
       "match": { "path": "$.type", "value": "tool_use" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.name", "status": "'pending'" }
+      "extract": { "title": "$.name", "status": "'pending'", "input": "$.input" }
     },
     {
       "match": { "path": "$.type", "value": "tool_result" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.name", "status": "'completed'" }
+      "extract": { "title": "$.name", "status": "'completed'", "output": "$.content" }
     }
   ],
   "result": {
@@ -153,7 +192,7 @@ Run the headless adapter with your schema:
 AGENT_API_KEY=... bunx @plaited/agent-eval-harness headless --schema ./my-agent-headless.json
 ```
 
-### Step 6: Test with Debug Mode
+### Step 7: Test with Debug Mode
 
 Use debug mode to verify JSONPath extraction:
 
@@ -185,7 +224,7 @@ Debug mode shows:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `autoApprove` | string[] | Flags for non-interactive mode |
+| `autoApprove` | string[] | Flags for non-interactive mode (see [Security](#security-autoapprove)) |
 | `cwdFlag` | string | Working directory flag |
 | `resume` | object | Session resume configuration |
 | `historyTemplate` | string | Template for iterative mode |
@@ -196,6 +235,18 @@ Debug mode shows:
 |------|-------------|
 | `stream` | CLI keeps process alive for multi-turn via stdin |
 | `iterative` | CLI is stateless; new process per turn |
+
+### Security: autoApprove {#security-autoapprove}
+
+The `autoApprove` field bypasses the agent's safety confirmation prompts. Choose the **least permissive** option:
+
+| Approach | Example | Risk |
+|----------|---------|------|
+| Scoped tools | `["--allowedTools", "Read,Write"]` | Low — only named tools |
+| Read-only | `["--auto-approve", "read-only"]` | Low — no writes |
+| Full bypass | `["--dangerously-skip-permissions"]` | High — all tools, no confirmation |
+
+**Full bypass flags should only be used in isolated environments** (Docker containers, ephemeral CI runners, `--workspace-dir` sandboxes). Never run them against production filesystems or shared workspaces.
 
 ## CLI Documentation Links
 

@@ -24,12 +24,12 @@
     {
       "match": { "path": "$.type", "value": "tool_use" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.name", "status": "'pending'" }
+      "extract": { "title": "$.name", "status": "'pending'", "input": "$.input" }
     },
     {
       "match": { "path": "$.type", "value": "tool_result" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.name", "status": "'completed'" }
+      "extract": { "title": "$.name", "status": "'completed'", "output": "$.content" }
     }
   ],
   "result": {

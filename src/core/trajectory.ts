@@ -30,7 +30,7 @@ export const extractTrajectory = (updates: ParsedUpdate[], startTime: number): T
   const toolCallMap = new Map<string, { start: number; step: TrajectoryStep & { type: 'tool_call' } }>()
 
   for (const update of updates) {
-    const timestamp = Date.now() - startTime
+    const timestamp = update.timestamp - startTime
 
     if (update.type === 'thought') {
       trajectory.push({
@@ -45,19 +45,23 @@ export const extractTrajectory = (updates: ParsedUpdate[], startTime: number): T
         timestamp,
       })
     } else if (update.type === 'tool_call') {
-      const toolCallId = update.title ?? `tool_${Date.now()}`
+      const toolCallId = update.title ?? `tool_${timestamp}`
       const existing = toolCallMap.get(toolCallId)
 
       if (existing && update.status === 'completed') {
         // Update existing tool call with completion info
         existing.step.status = update.status
         existing.step.duration = timestamp - existing.start
+        if (update.output !== undefined) {
+          existing.step.output = update.output
+        }
       } else if (!existing) {
         // New tool call
         const step: TrajectoryStep & { type: 'tool_call' } = {
           type: 'tool_call',
           name: update.title ?? 'unknown',
           status: update.status ?? 'pending',
+          ...(update.input !== undefined && { input: update.input }),
           timestamp,
         }
         toolCallMap.set(toolCallId, { start: timestamp, step })

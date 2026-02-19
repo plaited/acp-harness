@@ -3,7 +3,7 @@
  *
  * @remarks
  * Tests verify the headless session manager works correctly with Claude Code CLI
- * using the schema-driven approach from `.claude/skills/headless-adapters/schemas/`.
+ * using the schema-driven headless adapter approach.
  *
  * Run locally with API key:
  * ```bash
@@ -29,7 +29,7 @@ setDefaultTimeout(120000)
 const PROJECT_ROOT = process.cwd()
 
 // Schema path for Claude headless adapter
-const SCHEMA_PATH = join(PROJECT_ROOT, '.claude/skills/headless-adapters/schemas/claude-headless.json')
+const SCHEMA_PATH = join(PROJECT_ROOT, 'src/headless/tests/fixtures/claude-headless.json')
 
 // Get API key from environment
 const API_KEY = process.env.ANTHROPIC_API_KEY ?? ''

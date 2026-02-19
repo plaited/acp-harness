@@ -6,8 +6,9 @@ This guide documents common issues encountered when creating headless adapter sc
 
 1. [Tool Calls Not Appearing in Trajectories](#tool-calls-not-appearing)
 2. [Stdin Mode Issues](#stdin-mode-issues)
-3. [JSONPath Debugging](#jsonpath-debugging)
-4. [Output Event Matching](#output-event-matching)
+3. [Tool Input/Output Not Captured](#tool-input-output-missing)
+4. [JSONPath Debugging](#jsonpath-debugging)
+5. [Output Event Matching](#output-event-matching)
 
 ---
 
@@ -48,12 +49,12 @@ Use wildcard `[*]` syntax in JSONPath expressions to iterate over array items:
     {
       "match": { "path": "$.message.content[*].type", "value": "tool_use" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.name", "status": "'pending'" }
+      "extract": { "title": "$.name", "status": "'pending'", "input": "$.input" }
     },
     {
       "match": { "path": "$.message.content[*].type", "value": "tool_result" },
       "emitAs": "tool_call",
-      "extract": { "title": "$.tool_use_id", "status": "'completed'" }
+      "extract": { "title": "$.tool_use_id", "status": "'completed'", "output": "$.content" }
     }
   ]
 }
@@ -273,6 +274,77 @@ cat output.jsonl | jq '.message.content[] | select(.type == "tool_use") | .name'
 "path": "$.items[*]"  // Correct (JSONPath syntax)
 ```
 
+❌ **Using JSONPath filter expressions:**
+```json
+"extract": {
+  "title": "$.content[?(@.type=='tool_use')].name"  // Wrong (filter not supported)
+}
+```
+Filter expressions `[?()]` are not supported and silently return `undefined`. Use wildcard matching at the `match` level instead, then simple item-relative paths in `extract`:
+```json
+{
+  "match": { "path": "$.content[*].type", "value": "tool_use" },
+  "extract": { "title": "$.name" }
+}
+```
+
+---
+
+## Tool Input/Output Not Captured {#tool-input-output-missing}
+
+### Symptom
+
+- Trajectory `tool_call` steps have `name` and `status` but no `input` or `output`
+- Graders can't inspect what arguments were passed to tools
+- Graders can't inspect what results tools returned
+- Step-level analysis is limited to tool name only
+
+### Root Cause
+
+The schema's `extract` configuration for tool events only maps `title` and `status`, omitting `input` and `output` fields:
+
+```json
+{
+  "match": { "path": "$.type", "value": "tool_use" },
+  "emitAs": "tool_call",
+  "extract": { "title": "$.name", "status": "'pending'" }
+}
+```
+
+### Solution
+
+Add `input` to the tool start event and `output` to the tool completion event:
+
+```json
+{
+  "match": { "path": "$.type", "value": "tool_use" },
+  "emitAs": "tool_call",
+  "extract": { "title": "$.name", "status": "'pending'", "input": "$.input" }
+},
+{
+  "match": { "path": "$.type", "value": "tool_result" },
+  "emitAs": "tool_call",
+  "extract": { "title": "$.name", "status": "'completed'", "output": "$.content" }
+}
+```
+
+**Key details:**
+- `input` and `output` preserve native types (objects, arrays) — they are **not** coerced to string
+- The JSONPath varies by CLI: Claude uses `$.input`/`$.content`, Codex uses `$.item.arguments`/`$.item.result`
+- Both fields are optional: schemas without them continue to work, tool calls just lack argument/result data
+
+### Debugging Steps
+
+1. **Capture raw output and identify input/output fields:**
+   ```bash
+   <agent> -p "Read a file" --output-format stream-json 2>&1 | \
+     jq 'select(.type == "tool_use" or .type == "tool_result")'
+   ```
+
+2. **Map the correct JSONPaths** for your agent's tool events
+
+3. **Add `input`/`output`** to the extract config and test with `headless --debug`
+
 ---
 
 ## Output Event Matching {#output-event-matching}
@@ -333,8 +405,8 @@ This means:
 {
   "match": { "path": "$.message.content[*].type", "value": "tool_use" },
   "extract": {
-    "title": "$.name",  // ✅ Relative to matched item
-    "content": "$.input"  // ✅ Relative to matched item
+    "title": "$.name",   // ✅ Relative to matched item
+    "input": "$.input"   // ✅ Relative to matched item, preserved as object
   }
 }
 ```
