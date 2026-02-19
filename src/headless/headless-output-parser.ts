@@ -23,6 +23,9 @@ export type ParsedUpdate = {
   content?: string
   title?: string
   status?: string
+  input?: unknown
+  output?: unknown
+  timestamp: number
   raw: unknown
 }
 
@@ -200,6 +203,9 @@ const parsePassthrough = (line: string, typeMap: PassthroughTypeMap): ParsedUpda
       content: typeof event.content === 'string' ? event.content : undefined,
       title: typeof event.name === 'string' ? event.name : typeof event.title === 'string' ? event.title : undefined,
       status: typeof event.status === 'string' ? event.status : undefined,
+      input: event.input,
+      output: event.output,
+      timestamp: Date.now(),
       raw: event,
     }
   }
@@ -210,6 +216,9 @@ const parsePassthrough = (line: string, typeMap: PassthroughTypeMap): ParsedUpda
     content: typeof event.content === 'string' ? event.content : undefined,
     title: typeof event.name === 'string' ? event.name : typeof event.title === 'string' ? event.title : undefined,
     status: typeof event.status === 'string' ? event.status : undefined,
+    input: event.input,
+    output: event.output,
+    timestamp: Date.now(),
     raw: event,
   }
 }
@@ -307,6 +316,7 @@ export const createOutputParser = (config: HeadlessAdapterConfig) => {
   const createUpdate = (event: unknown, mapping: OutputEventMapping): ParsedUpdate => {
     const update: ParsedUpdate = {
       type: mapping.emitAs,
+      timestamp: Date.now(),
       raw: event,
     }
 
@@ -319,6 +329,18 @@ export const createOutputParser = (config: HeadlessAdapterConfig) => {
       }
       if (mapping.extract.status) {
         update.status = jsonPathString(event, mapping.extract.status)
+      }
+      if (mapping.extract.input) {
+        const value = jsonPath(event, mapping.extract.input)
+        if (value !== undefined) {
+          update.input = value
+        }
+      }
+      if (mapping.extract.output) {
+        const value = jsonPath(event, mapping.extract.output)
+        if (value !== undefined) {
+          update.output = value
+        }
       }
     }
 

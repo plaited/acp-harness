@@ -108,6 +108,7 @@ describe('extractTrajectory', () => {
       {
         type: 'thought',
         content: 'Let me think about this...',
+        timestamp: 100,
         raw: { type: 'thought', text: 'Let me think about this...' },
       },
     ]
@@ -125,6 +126,7 @@ describe('extractTrajectory', () => {
       {
         type: 'message',
         content: 'Here is my answer.',
+        timestamp: 200,
         raw: { type: 'message', text: 'Here is my answer.' },
       },
     ]
@@ -143,6 +145,7 @@ describe('extractTrajectory', () => {
         type: 'tool_call',
         title: 'Read',
         status: 'pending',
+        timestamp: 300,
         raw: { tool: 'Read', input: { file_path: '/test.ts' } },
       },
     ]
@@ -160,6 +163,7 @@ describe('extractTrajectory', () => {
     const updates: ParsedUpdate[] = [
       {
         type: 'plan',
+        timestamp: 400,
         raw: {
           entries: [
             { content: 'Step 1', status: 'completed' },
@@ -185,29 +189,26 @@ describe('extractTrajectory', () => {
   })
 
   test('assigns timestamps relative to start time', () => {
-    const originalNow = Date.now
-    try {
-      let currentTime = 1000
+    const startTime = 1000
+    const updates: ParsedUpdate[] = [
+      {
+        type: 'message',
+        content: 'First',
+        timestamp: 1500,
+        raw: { type: 'message', text: 'First' },
+      },
+      {
+        type: 'message',
+        content: 'Second',
+        timestamp: 2000,
+        raw: { type: 'message', text: 'Second' },
+      },
+    ]
 
-      Date.now = () => currentTime
+    const trajectory = extractTrajectory(updates, startTime)
 
-      const updates: ParsedUpdate[] = [
-        {
-          type: 'message',
-          content: 'First',
-          raw: { type: 'message', text: 'First' },
-        },
-      ]
-
-      const startTime = 1000
-      currentTime = 1500 // 500ms later
-
-      const trajectory = extractTrajectory(updates, startTime)
-
-      expect(trajectory[0]?.timestamp).toBe(500)
-    } finally {
-      Date.now = originalNow
-    }
+    expect(trajectory[0]?.timestamp).toBe(500)
+    expect(trajectory[1]?.timestamp).toBe(1000)
   })
 
   test('handles updates without content for message/thought types', () => {
@@ -215,11 +216,13 @@ describe('extractTrajectory', () => {
       {
         type: 'message',
         content: undefined, // No content - will have empty string
+        timestamp: 100,
         raw: { type: 'message' },
       },
       {
         type: 'message',
         content: 'Has content',
+        timestamp: 200,
         raw: { type: 'message', text: 'Has content' },
       },
     ]
@@ -230,6 +233,113 @@ describe('extractTrajectory', () => {
     expect(trajectory).toHaveLength(2)
     expect(trajectory[0]?.type).toBe('message')
     expect(trajectory[1]?.type).toBe('message')
+  })
+
+  test('attaches input to new tool call from update', () => {
+    const updates: ParsedUpdate[] = [
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/main.ts' },
+        timestamp: 500,
+        raw: {},
+      },
+    ]
+
+    const trajectory = extractTrajectory(updates, baseTime)
+
+    expect(trajectory).toHaveLength(1)
+    const step = trajectory[0]!
+    expect(step.type === 'tool_call' && step.input).toEqual({ file_path: '/src/main.ts' })
+  })
+
+  test('attaches output to tool call on completion', () => {
+    const updates: ParsedUpdate[] = [
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/main.ts' },
+        timestamp: 500,
+        raw: {},
+      },
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'completed',
+        output: 'file contents here',
+        timestamp: 800,
+        raw: {},
+      },
+    ]
+
+    const trajectory = extractTrajectory(updates, baseTime)
+
+    expect(trajectory).toHaveLength(1)
+    const step = trajectory[0]!
+    expect(step.type).toBe('tool_call')
+    if (step.type === 'tool_call') {
+      expect(step.input).toEqual({ file_path: '/src/main.ts' })
+      expect(step.output).toBe('file contents here')
+      expect(step.status).toBe('completed')
+      expect(step.duration).toBe(300)
+    }
+  })
+
+  test('handles sequential same-named tool calls independently', () => {
+    const updates: ParsedUpdate[] = [
+      // First Read: pending → completed
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/a.ts' },
+        timestamp: 100,
+        raw: {},
+      },
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'completed',
+        output: 'contents of a.ts',
+        timestamp: 300,
+        raw: {},
+      },
+      // Second Read: pending → completed (same tool name, different args)
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'pending',
+        input: { file_path: '/src/b.ts' },
+        timestamp: 500,
+        raw: {},
+      },
+      {
+        type: 'tool_call',
+        title: 'Read',
+        status: 'completed',
+        output: 'contents of b.ts',
+        timestamp: 700,
+        raw: {},
+      },
+    ]
+
+    const trajectory = extractTrajectory(updates, baseTime)
+
+    // Both calls should appear as separate trajectory steps
+    const toolCalls = trajectory.filter((s) => s.type === 'tool_call')
+    expect(toolCalls).toHaveLength(2)
+
+    const first = toolCalls[0]!
+    expect(first.type === 'tool_call' && first.input).toEqual({ file_path: '/src/a.ts' })
+    expect(first.type === 'tool_call' && first.output).toBe('contents of a.ts')
+    expect(first.type === 'tool_call' && first.status).toBe('completed')
+
+    const second = toolCalls[1]!
+    expect(second.type === 'tool_call' && second.input).toEqual({ file_path: '/src/b.ts' })
+    expect(second.type === 'tool_call' && second.output).toBe('contents of b.ts')
+    expect(second.type === 'tool_call' && second.status).toBe('completed')
   })
 })
 

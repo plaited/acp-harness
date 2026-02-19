@@ -25,7 +25,7 @@ export ANTHROPIC_API_KEY=sk-...   # For Claude
 export GEMINI_API_KEY=...         # For Gemini
 ```
 
-Pre-built schemas are available in `.agents/skills/headless-adapters/schemas/` for Claude and Gemini.
+Create adapter schemas for any CLI agent that outputs JSON — see the [Schema Creation Guide](.agents/skills/headless-adapters/references/schema-creation-guide.md).
 
 ### Core Commands
 
@@ -416,7 +416,7 @@ ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... \
 ## Requirements
 
 - **Runtime:** Bun >= 1.2.9
-- **Schema:** JSON schema describing CLI agent interaction (see `.agents/skills/headless-adapters/schemas/`)
+- **Schema:** JSON schema describing CLI agent interaction (see [Schema Creation Guide](.agents/skills/headless-adapters/references/schema-creation-guide.md))
 - **API Key:** `ANTHROPIC_API_KEY` for Claude, `GEMINI_API_KEY` for Gemini
 
 ## License

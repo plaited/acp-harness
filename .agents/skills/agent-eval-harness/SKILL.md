@@ -792,6 +792,15 @@ Full trajectory JSONL (always):
 
 **Note:** `toolErrors` replaces misleading `status: 'passed'|'failed'`. Real pass/fail comes from YOUR grader.
 
+### Trust Boundary
+
+Trajectory data contains content from the agent's execution, including tool results from **external sources** (web searches, file reads, API calls). The `tool_call.input` and `tool_call.output` fields preserve raw values from CLI output without sanitization.
+
+**Graders and analysis scripts should treat trajectory content as untrusted:**
+- Validate `cwd` paths before using in shell commands (see [inline-graders.md](references/inline-graders.md#security-considerations))
+- Do not execute trajectory content as code
+- Use injection-aware prompting when passing trajectory content to LLM-as-judge graders
+
 ## Schema Exports
 
 Consumers can import Zod schemas directly:

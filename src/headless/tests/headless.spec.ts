@@ -36,7 +36,12 @@ const validClaudeSchema = {
     {
       match: { path: '$.type', value: 'tool_use' },
       emitAs: 'tool_call',
-      extract: { title: '$.name', status: "'pending'" },
+      extract: { title: '$.name', status: "'pending'", input: '$.input' },
+    },
+    {
+      match: { path: '$.type', value: 'tool_result' },
+      emitAs: 'tool_call',
+      extract: { title: '$.name', status: "'completed'", output: '$.content' },
     },
   ],
   result: {
@@ -86,18 +91,80 @@ describe('HeadlessAdapterSchema', () => {
   })
 
   describe('validates schema files from disk', () => {
-    const schemasDir = '.claude/skills/headless-adapters/schemas'
+    const fixturesDir = 'src/headless/tests/fixtures'
 
     test('validates claude-headless.json from disk', async () => {
-      const content = await Bun.file(`${schemasDir}/claude-headless.json`).json()
+      const content = await Bun.file(`${fixturesDir}/claude-headless.json`).json()
       const result = HeadlessAdapterSchema.safeParse(content)
       expect(result.success).toBe(true)
     })
 
     test('validates gemini-headless.json from disk', async () => {
-      const content = await Bun.file(`${schemasDir}/gemini-headless.json`).json()
+      const content = await Bun.file(`${fixturesDir}/gemini-headless.json`).json()
       const result = HeadlessAdapterSchema.safeParse(content)
       expect(result.success).toBe(true)
+    })
+  })
+
+  describe('extract input/output fields', () => {
+    test('validates schema with input and output in extract config', () => {
+      const schemaWithIO = {
+        ...validClaudeSchema,
+        outputEvents: [
+          ...validClaudeSchema.outputEvents,
+          {
+            match: { path: '$.type', value: 'custom' },
+            emitAs: 'tool_call',
+            extract: { title: '$.name', input: '$.args', output: '$.result' },
+          },
+        ],
+      }
+      const result = HeadlessAdapterSchema.safeParse(schemaWithIO)
+      expect(result.success).toBe(true)
+    })
+
+    test('preserves extra extract fields via catchall', () => {
+      const schemaWithExtras = {
+        ...validClaudeSchema,
+        outputEvents: [
+          {
+            match: { path: '$.type', value: 'tool_use' },
+            emitAs: 'tool_call',
+            extract: {
+              title: '$.name',
+              status: "'pending'",
+              input: '$.input',
+              toolName: '$.name',
+              mcpServer: '$.server',
+            },
+          },
+        ],
+      }
+      const result = HeadlessAdapterSchema.safeParse(schemaWithExtras)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        const extract = result.data.outputEvents![0]!.extract!
+        expect(extract.title).toBe('$.name')
+        expect(extract.input).toBe('$.input')
+        // Catchall fields aren't in the inferred type — cast needed to access them
+        expect((extract as Record<string, string>).toolName).toBe('$.name')
+        expect((extract as Record<string, string>).mcpServer).toBe('$.server')
+      }
+    })
+
+    test('rejects non-string extra extract fields', () => {
+      const schemaWithBadExtras = {
+        ...validClaudeSchema,
+        outputEvents: [
+          {
+            match: { path: '$.type', value: 'tool_use' },
+            emitAs: 'tool_call',
+            extract: { title: '$.name', badField: 123 },
+          },
+        ],
+      }
+      const result = HeadlessAdapterSchema.safeParse(schemaWithBadExtras)
+      expect(result.success).toBe(false)
     })
   })
 
@@ -397,6 +464,70 @@ describe('createOutputParser', () => {
       const singleResult = Array.isArray(result) ? result[0] : result
       expect(singleResult?.raw).toEqual(event)
     })
+
+    test('extracts input from tool_use event', () => {
+      const line = JSON.stringify({ type: 'tool_use', name: 'Read', input: { file_path: '/test.ts' } })
+      const result = parser.parseLine(line)
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.input).toEqual({ file_path: '/test.ts' })
+    })
+
+    test('extracts output from tool_result event', () => {
+      const line = JSON.stringify({ type: 'tool_result', name: 'Read', content: 'file contents' })
+      const result = parser.parseLine(line)
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.output).toBe('file contents')
+    })
+
+    test('sets timestamp on parsed updates', () => {
+      const before = Date.now()
+      const line = JSON.stringify({ type: 'assistant', message: { text: 'Hello' } })
+      const result = parser.parseLine(line)
+      const after = Date.now()
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult?.timestamp).toBeGreaterThanOrEqual(before)
+      expect(singleResult?.timestamp).toBeLessThanOrEqual(after)
+    })
+  })
+
+  describe('parseLine with extra extract fields', () => {
+    test('extra extract fields do not break parser', () => {
+      const configWithExtras = parseHeadlessConfig({
+        version: 1,
+        name: 'extras-test',
+        command: ['test'],
+        sessionMode: 'stream',
+        prompt: { flag: '-p' },
+        output: { flag: '--output', value: 'json' },
+        outputEvents: [
+          {
+            match: { path: '$.type', value: 'tool_use' },
+            emitAs: 'tool_call',
+            extract: {
+              title: '$.name',
+              status: "'pending'",
+              input: '$.input',
+              toolName: '$.name',
+              mcpServer: '$.server',
+            },
+          },
+        ],
+        result: { matchPath: '$.type', matchValue: 'done', contentPath: '$.text' },
+      })
+      const extrasParser = createOutputParser(configWithExtras)
+      const line = JSON.stringify({
+        type: 'tool_use',
+        name: 'WebSearch',
+        input: { query: 'test' },
+        server: 'mcp-search',
+      })
+      const result = extrasParser.parseLine(line)
+      const singleResult = Array.isArray(result) ? result[0] : result
+      expect(singleResult).not.toBeNull()
+      expect(singleResult?.type).toBe('tool_call')
+      expect(singleResult?.title).toBe('WebSearch')
+      expect(singleResult?.input).toEqual({ query: 'test' })
+    })
   })
 
   describe('parseLine with array wildcards', () => {
@@ -571,6 +702,70 @@ describe('createOutputParser', () => {
         expect(result.content).toBe('')
       }
     })
+  })
+})
+
+// ============================================================================
+// Passthrough Mode Tests
+// ============================================================================
+
+describe('passthrough mode', () => {
+  const passthroughConfig = parseHeadlessConfig({
+    version: 1,
+    name: 'passthrough-test',
+    command: ['test-agent'],
+    sessionMode: 'stream',
+    prompt: { flag: '-p' },
+    output: { flag: '--output', value: 'json' },
+    outputMode: 'passthrough',
+    passthroughTypeMap: {
+      typeField: 'type',
+      typeValues: { tool_use: 'tool_call', tool_result: 'tool_call' },
+    },
+    result: { matchPath: '$.type', matchValue: 'result', contentPath: '$.content' },
+  })
+  const passthroughParser = createOutputParser(passthroughConfig)
+
+  test('extracts input from tool_call event', () => {
+    const line = JSON.stringify({ type: 'tool_use', name: 'Read', input: { file_path: '/test.ts' }, status: 'pending' })
+    const result = passthroughParser.parseLine(line)
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.type).toBe('tool_call')
+    expect(singleResult?.input).toEqual({ file_path: '/test.ts' })
+  })
+
+  test('extracts output from tool_result event', () => {
+    const line = JSON.stringify({ type: 'tool_result', name: 'Read', output: 'file contents', status: 'completed' })
+    const result = passthroughParser.parseLine(line)
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.type).toBe('tool_call')
+    expect(singleResult?.output).toBe('file contents')
+  })
+
+  test('preserves object input type', () => {
+    const line = JSON.stringify({ type: 'tool_use', name: 'Write', input: { path: '/a.ts', content: 'code' } })
+    const result = passthroughParser.parseLine(line)
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.input).toEqual({ path: '/a.ts', content: 'code' })
+  })
+
+  test('sets timestamp on passthrough updates', () => {
+    const before = Date.now()
+    const line = JSON.stringify({ type: 'message', content: 'Hello' })
+    const result = passthroughParser.parseLine(line)
+    const after = Date.now()
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.timestamp).toBeGreaterThanOrEqual(before)
+    expect(singleResult?.timestamp).toBeLessThanOrEqual(after)
+  })
+
+  test('handles absent input/output fields gracefully', () => {
+    const line = JSON.stringify({ type: 'tool_use', name: 'Bash', status: 'pending' })
+    const result = passthroughParser.parseLine(line)
+    const singleResult = Array.isArray(result) ? result[0] : result
+    expect(singleResult?.type).toBe('tool_call')
+    expect(singleResult?.input).toBeUndefined()
+    expect(singleResult?.output).toBeUndefined()
   })
 })
 

@@ -36,18 +36,29 @@ export type OutputEventMatch = z.infer<typeof OutputEventMatchSchema>
  * Schema for extracting content from matched events.
  *
  * @remarks
+ * Known fields (`content`, `title`, `status`, `input`, `output`) are used by the
+ * output parser to populate `ParsedUpdate` properties. Additional string-valued
+ * fields are preserved during validation for forward compatibility but are not
+ * consumed by the parser.
+ *
  * Paths can be:
  * - JSONPath expressions (e.g., "$.message.text")
  * - Literal strings in single quotes (e.g., "'pending'")
  */
-export const OutputEventExtractSchema = z.object({
-  /** JSONPath to extract main content */
-  content: z.string().optional(),
-  /** JSONPath to extract title (for tool calls) */
-  title: z.string().optional(),
-  /** JSONPath to extract status (or literal like "'pending'") */
-  status: z.string().optional(),
-})
+export const OutputEventExtractSchema = z
+  .object({
+    /** JSONPath to extract main content */
+    content: z.string().optional(),
+    /** JSONPath to extract title (for tool calls) */
+    title: z.string().optional(),
+    /** JSONPath to extract status (or literal like "'pending'") */
+    status: z.string().optional(),
+    /** JSONPath to extract tool input arguments (e.g., "$.input") */
+    input: z.string().optional(),
+    /** JSONPath to extract tool output/result content (e.g., "$.content") */
+    output: z.string().optional(),
+  })
+  .catchall(z.string())
 
 /** Output event extract type */
 export type OutputEventExtract = z.infer<typeof OutputEventExtractSchema>

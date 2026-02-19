@@ -123,7 +123,7 @@ describe('extractTrajectory', () => {
   const startTime = 1000
 
   test('extracts message updates', () => {
-    const updates: ParsedUpdate[] = [{ type: 'message', content: 'Hello', raw: {} }]
+    const updates: ParsedUpdate[] = [{ type: 'message', content: 'Hello', timestamp: 1100, raw: {} }]
     const trajectory = extractTrajectory(updates, startTime)
     expect(trajectory.length).toBe(1)
     expect(trajectory[0]?.type).toBe('message')
@@ -131,7 +131,7 @@ describe('extractTrajectory', () => {
   })
 
   test('extracts thought updates', () => {
-    const updates: ParsedUpdate[] = [{ type: 'thought', content: 'Thinking...', raw: {} }]
+    const updates: ParsedUpdate[] = [{ type: 'thought', content: 'Thinking...', timestamp: 1200, raw: {} }]
     const trajectory = extractTrajectory(updates, startTime)
     expect(trajectory.length).toBe(1)
     expect(trajectory[0]?.type).toBe('thought')
@@ -143,6 +143,7 @@ describe('extractTrajectory', () => {
         type: 'tool_call',
         title: 'Read',
         status: 'completed',
+        timestamp: 1300,
         raw: {},
       },
     ]

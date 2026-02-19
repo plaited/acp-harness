@@ -16,6 +16,16 @@
       "match": { "path": "$.type", "value": "message" },
       "emitAs": "message",
       "extract": { "content": "$.content" }
+    },
+    {
+      "match": { "path": "$.type", "value": "tool_use" },
+      "emitAs": "tool_call",
+      "extract": { "title": "$.tool_name", "status": "'pending'", "input": "$.args" }
+    },
+    {
+      "match": { "path": "$.type", "value": "tool_result" },
+      "emitAs": "tool_call",
+      "extract": { "title": "$.tool_name", "status": "'completed'", "output": "$.output" }
     }
   ],
   "result": {
