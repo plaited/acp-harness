@@ -4,29 +4,35 @@ Agent guidance for this repository.
 
 ## Overview
 
-CLI tool capturing agent trajectories from headless CLI agents. Executes prompts, captures tools/thoughts/plans, outputs JSONL for evaluation.
+General-purpose eval harness for running trials against CLI agents. Executes prompts via adapter scripts, captures trajectories (thoughts, tool calls, messages), grades outputs, and writes JSONL results.
 
 ## Capabilities
 
 - **Multi-turn**: `input: string | string[]` executes sequentially in same session
 - **Isolation**: Fresh session per JSONL entry
-- **Parallelization**: `-j N` runs N prompts concurrently via worker pool
-- **Workspace isolation**: `--workspace-dir` creates per-prompt directories
-- **MCP auto-discovery**: No explicit `--mcp-server` flag needed
-- **Headless adapter**: Schema-driven JSON wrapper for any CLI agent
+- **Parallelization**: Concurrency control via worker pool
+- **Workspace isolation**: Creates per-prompt directories for adapter execution
+- **Polyglot adapters**: TS/JS modules (import `adapt` function) or executable scripts (stdin/stdout JSON protocol)
+- **Polyglot graders**: TS/JS modules (import `grade` function) or executable scripts
+- **pass@k metrics**: Multiple trials per prompt with statistical aggregation
 
 ## Structure
 
 ```
 src/
-├── harness/        # Core capture engine
-├── headless/       # Headless adapter implementation
-├── pipeline/       # Unix-style pipeline commands
-└── schemas/        # Zod schemas + types
+├── cli.ts             # Unified CLI entry point (trials/compare/calibrate)
+├── cli.utils.ts       # Shared CLI parsing utilities
+├── trial.ts           # Trial runner library + CLI handler
+├── trial.schemas.ts   # Zod schemas (single source of truth)
+├── trial.utils.ts     # Loaders, worker pool, trajectory analysis
+├── trial.constants.ts # Default timeout, default k
+└── tests/
+    └── trial.spec.ts  # Trial runner tests
 
-.agents/skills/     # AI agent skills (symlinked to .claude/, .cursor/)
-├── agent-eval-harness/
-└── headless-adapters/
+.agents/skills/
+├── trial-runner/      # Running trials with adapters
+├── trial-adapters/    # Writing adapter scripts
+└── compare-trials/    # Statistical comparison of trial results
 ```
 
 ## Commands
@@ -36,52 +42,46 @@ src/
 | `bun install` | Setup (requires bun >= v1.2.9) |
 | `bun run check` | Type/lint/format check |
 | `bun run check:write` | Auto-fix lint/format |
-| `bun test` | Unit tests |
+| `bun test src/` | Unit tests |
 
-**Docker integration tests:**
+## CLI
+
 ```bash
-ANTHROPIC_API_KEY=sk-... GEMINI_API_KEY=... \
-  docker compose -f docker-compose.test.yml run --rm test
+bunx @plaited/agent-eval-harness trials '{"adapterPath": "./adapter.ts", "promptsPath": "./prompts.jsonl", "k": 3}'
 ```
+
+| Subcommand | Status | Purpose |
+|------------|--------|---------|
+| `trials` | Implemented | Run trials against an adapter with optional grading |
+| `compare` | Stub | Statistical comparison of trial results |
+| `calibrate` | Stub | Grader calibration |
+
+## Package Exports
+
+| Import Path | What It Exports |
+|------------|----------------|
+| `@plaited/agent-eval-harness` | `runTrial`, `calculatePassAtK`, `calculatePassExpK`, `trialCli` |
+| `@plaited/agent-eval-harness/schemas` | All Zod schemas and types (`Grader`, `Adapter`, `TrajectoryStep`, etc.) |
 
 ## Skills
 
-| Skill | Commands | Use Case |
-|-------|----------|----------|
-| **agent-eval-harness** | `capture`, `trials`, `summarize`, `calibrate`, `validate-refs`, `balance`, `schemas`, `run`, `extract`, `grade`, `format`, `compare` | Trajectory capture, training data, regression tests, A/B comparison |
-| **headless-adapters** | `headless` | Find/create/validate adapter schemas |
-
-**Install:** `npx skills add plaited/agent-eval-harness` or `bunx skills add plaited/agent-eval-harness`
+| Skill | Use Case |
+|-------|----------|
+| **trial-runner** | Running trials with adapters, interpreting results |
+| **trial-adapters** | Writing adapter scripts for different agents |
+| **compare-trials** | Statistical comparison of trial result sets |
 
 ## Constraints
 
 - **Bun required**: >= v1.2.9
-- **ES2024**: Uses `Promise.withResolvers()` and modern APIs
+- **ES2024**: Uses modern APIs
 
 ## Verification
 
 **Before commit:**
 - `bun run check` passes
-- `bun test` passes (unit tests)
+- `bun test src/` passes
 - No `--no-verify` on git commits
-
-**Skill validation:**
-```bash
-bunx @plaited/development-skills validate-skill .agents/skills/<name>
-```
-
-## Workflow
-
-1. **Plan first**: Use TodoWrite for multi-step tasks
-2. **Read before edit**: Verify current code before proposing changes
-3. **Verify incrementally**: Run checks after each change
-4. **No over-engineering**: Only requested changes
-
-Development rules in `.agents/rules/` - reference via @.agents/rules/[name].md in CLAUDE.md
-
-## Learnings
-
-*Dated entries from actual issues encountered will appear here*
 
 <!-- PLAITED-RULES-START -->
 
@@ -95,12 +95,14 @@ Development rules in `.agents/rules/` - reference via @.agents/rules/[name].md i
 - `Bun.file(path).exists()` not `fs.existsSync()`
 - `Bun.file(path).text()` not `readFileSync()`
 - `Bun.write(path, data)` not `writeFileSync()`
-*Verify:* `grep 'from .node:fs' src/`  
+*Verify:* `grep 'from .node:fs' src/`
 *Fix:* Replace with Bun.file/Bun.write
+
+**When Node.js OK:** `appendFile` (no Bun async append equivalent), `mkdir` with `{ recursive: true }`, `node:path` utilities
 
 **Shell commands:**
 - `Bun.$\`cmd\`` not `child_process.spawn()`
-*Verify:* `grep 'child_process' src/`  
+*Verify:* `grep 'child_process' src/`
 *Fix:* Replace with Bun.$ template literal
 
 **Path resolution:**
@@ -113,8 +115,6 @@ Development rules in `.agents/rules/` - reference via @.agents/rules/[name].md i
 - `Bun.which(cmd)` to check if command exists
 - `Bun.$\`bun add pkg\`` for package management
 
-**When Node.js OK:** readline (interactive input), node:path utilities, APIs without Bun equivalents
-
 **Docs:** https://bun.sh/docs
 
 
@@ -122,9 +122,9 @@ Development rules in `.agents/rules/` - reference via @.agents/rules/[name].md i
 
 ## Git Commits
 
-**Conventional commits** - `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`  
-**Multi-line messages** - Use for detailed context  
-**Never --no-verify** - Fix the issue, don't bypass hooks  
+**Conventional commits** - `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`
+**Multi-line messages** - Use for detailed context
+**Never --no-verify** - Fix the issue, don't bypass hooks
 *Verify:* Check git log format
 
 ## GitHub CLI
@@ -145,7 +145,7 @@ gh api repos/<owner>/<repo>/pulls/<n>/comments
 
 **PR checklist:**
 - [ ] Human reviewer comments
-- [ ] AI code review comments  
+- [ ] AI code review comments
 - [ ] Security alerts (ReDoS, injection)
 - [ ] Code quality comments
 - [ ] Inline suggestions
@@ -162,12 +162,12 @@ gh api repos/<owner>/<repo>/pulls/<n>/comments
 
 # Module Organization
 
-**No index.ts** - Never use index files, they create implicit magic  
-*Verify:* `find . -name 'index.ts'`  
+**No index.ts** - Never use index files, they create implicit magic
+*Verify:* `find . -name 'index.ts'`
 *Fix:* Rename to feature name: `feature/index.ts` → `feature.ts` at parent level
 
-**Explicit .ts extensions** - `import { x } from './file.ts'` not `'./file'`  
-*Verify:* `grep "from '\./.*[^s]'" src/` (imports without .ts)  
+**Explicit .ts extensions** - `import { x } from './file.ts'` not `'./file'`
+*Verify:* `grep "from '\./.*[^s]'" src/` (imports without .ts)
 *Fix:* Add `.ts` extension
 
 **Re-export at boundaries** - Parent `feature.ts` re-exports from `feature/feature.ts`
@@ -179,7 +179,7 @@ graph TD
     B --> D[feature.ts]
     B --> E[tests/]
     E --> F[feature.spec.ts]
-    
+
     C -.Re-exports.-> D
 ```
 
@@ -189,41 +189,37 @@ graph TD
 - `feature.constants.ts` - Constants, error codes
 - `feature.ts` - Main implementation
 
-**Direct imports** - Import from specific files, not through re-exports within module  
-*Verify:* Check for circular imports  
+**Direct imports** - Import from specific files, not through re-exports within module
+*Verify:* Check for circular imports
 *Fix:* Import directly: `from './feature.types.ts'` not `from './feature.ts'`
 
 
 # Testing
 
-**Use test not it** - `test('description', ...)` instead of `it('...')`  
-*Verify:* `grep '\bit(' src/**/*.spec.ts`  
+**Use test not it** - `test('description', ...)` instead of `it('...')`
+*Verify:* `grep '\bit(' src/**/*.spec.ts`
 *Fix:* Replace `it(` with `test(`
 
-**No conditional assertions** - Never `if (x) expect(x.value)`  
-*Verify:* `grep 'if.*expect\|&&.*expect' src/**/*.spec.ts`  
+**No conditional assertions** - Never `if (x) expect(x.value)`
+*Verify:* `grep 'if.*expect\|&&.*expect' src/**/*.spec.ts`
 *Fix:* Assert condition first: `expect(x).toBeDefined(); expect(x.value)...`
 
-**Test both branches** - Try/catch, conditionals, fallbacks need both paths tested  
-*Verify:* Review test coverage for error paths  
+**Test both branches** - Try/catch, conditionals, fallbacks need both paths tested
+*Verify:* Review test coverage for error paths
 *Fix:* Add test for catch block, else branch, fallback case
 
-**Use real dependencies** - Prefer installed packages over mocks when testing module resolution  
-*Verify:* Review test imports for fake paths  
+**Use real dependencies** - Prefer installed packages over mocks when testing module resolution
+*Verify:* Review test imports for fake paths
 *Fix:* Use actual package like `typescript`
 
-**Organize with describe** - Group related tests in `describe('feature', () => {...})`  
-*Verify:* Check for flat test structure  
+**Organize with describe** - Group related tests in `describe('feature', () => {...})`
+*Verify:* Check for flat test structure
 *Fix:* Add describe blocks by category (happy path, edge cases, errors)
 
-**Coverage checklist** - Happy path, edge cases, error paths, real integrations  
+**Coverage checklist** - Happy path, edge cases, error paths, real integrations
 *Verify:* Review test file completeness
 
-**Docker tests** - `*.docker.ts` for external APIs, run via docker-compose  
-*Verify:* Check if test needs API key or external service  
-*Fix:* Rename to `.docker.ts`, update CI gating
-
-**Run:** `bun test` before commit
+**Run:** `bun test src/` before commit
 
 
 # Accuracy
@@ -239,12 +235,6 @@ graph TD
 - Present issue to user for resolution
 - Never invent solutions
 
-**TypeScript verification** - Use LSP tools for type-aware analysis:
-- `lsp-find` - Search symbols across workspace
-- `lsp-refs` - Find all usages before modifying
-- `lsp-hover` - Verify type signatures
-- `lsp-analyze` - Batch analysis of file structure
-
 **Dynamic exploration:**
 - Read tool for direct file verification
 - Grep/Glob for content and pattern searches
@@ -255,8 +245,6 @@ graph TD
 - Architecture: Verify patterns exist in codebase
 - Code review: Read files before commenting
 - Patterns: Confirm examples reflect actual usage
-
-See rules/testing.md for verification in test contexts.
 
 
 # Skill Activation
@@ -271,16 +259,6 @@ See rules/testing.md for verification in test contexts.
 
 *Verify:* Did you check available skills before starting implementation?
 *Fix:* Pause, evaluate skills, activate relevant ones, then continue
-
-**Example:**
-```
-- code-patterns: NO - not writing code
-- git-workflow: YES - need commit conventions
-- documentation: YES - writing README
-
-> Skill(git-workflow)
-> Skill(documentation)
-```
 
 **Activation before implementation** - Evaluating skills without calling `Skill()` provides no benefit
 *Verify:* Check that `Skill()` was called for each YES evaluation
@@ -306,16 +284,16 @@ See rules/testing.md for verification in test contexts.
  */
 ```
 
-**No @example** - Tests are living examples  
-**Use @internal** - Mark non-public APIs  
-**Mermaid only** - No ASCII box-drawing diagrams  
+**No @example** - Tests are living examples
+**Use @internal** - Mark non-public APIs
+**Mermaid only** - No ASCII box-drawing diagrams
 *Verify:* `grep '[┌│└─]' *.md`
 
 
 # Core Conventions
 
 **Type over interface** - `type User = {` instead of `interface User {`
-*Verify:* `lsp-find interface` or `grep 'interface [A-Z]' src/`
+*Verify:* `grep 'interface [A-Z]' src/`
 *Fix:* Replace `interface X {` with `type X = {`
 
 **No any types** - Use `unknown` with type guards
@@ -332,29 +310,20 @@ See rules/testing.md for verification in test contexts.
 
 **Object params >2 args** - `fn({ a, b, c }: { ... })` not `fn(a, b, c)`
 *Exception:* CLI entry points take `args: string[]`
-*Verify:* Review function signatures with `lsp-hover`
+*Verify:* Review function signatures
 
 **Private fields** - Use `#field` (ES2022) not `private field` (TypeScript)
 *Verify:* `grep 'private \w' src/`
 *Fix:* Replace `private x` with `#x`
 
 **JSON imports** - `import x from 'file.json' with { type: 'json' }`
-*Verify:* `grep "from.*\.json['\"]" src/` (check for missing `with`)
-*Fix:* Add `with { type: 'json' }`
 
 **@ts-ignore needs description** - `// @ts-ignore - reason here`
-*Verify:* `grep '@ts-ignore' src/` (check for missing comment)
 
 **Short-circuit/ternary OK** - `condition && doSomething()` is acceptable
 
-**Empty interface extending single** - `interface Custom extends Base {}` is OK for branded types
-
 **Mermaid diagrams only** - No ASCII box-drawing in markdown
-*Verify:* `grep '[┌│└─]' *.md`
 
 **No @example in TSDoc** - Tests are living examples
-
-**AgentSkills validation** - `bunx @plaited/development-skills validate-skill <path>`
-
 
 <!-- PLAITED-RULES-END -->
